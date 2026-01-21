@@ -16,6 +16,7 @@ A cross-platform personal knowledgebase and snippet manager for programmers, bui
 - Full-text search across all notes
 - Quick save (Ctrl+S) and autosave
 - Defaults to Preview mode for existing notes
+- Collapsible sidebar for distraction-free editing
 
 ### 📊 Spreadsheets
 - Excel-like spreadsheet interface
@@ -27,6 +28,7 @@ A cross-platform personal knowledgebase and snippet manager for programmers, bui
 - Undo/redo functionality
 - Formula bar for easy editing
 - Autosave support
+- Collapsible sidebar for focused work
 
 ### 💻 Code Snippets
 - Store and organize code snippets
@@ -36,6 +38,7 @@ A cross-platform personal knowledgebase and snippet manager for programmers, bui
 - Quick copy-to-clipboard
 - Full-text search
 - Live preview with syntax highlighting
+- Collapsible sidebar for maximum code viewing space
 
 ### 🔄 Backup Management
 - Configurable backup location

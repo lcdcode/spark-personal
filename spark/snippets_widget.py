@@ -119,13 +119,44 @@ class SnippetsWidget(QWidget):
         right_layout.addLayout(action_layout)
 
         # Splitter
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.addWidget(left_panel)
+        self.splitter.addWidget(right_panel)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 3)
 
-        layout.addWidget(splitter)
+        # Add toggle button for sidebar
+        toggle_button_layout = QHBoxLayout()
+        self.btn_toggle_sidebar = QPushButton("<<")
+        self.btn_toggle_sidebar.clicked.connect(self.toggle_sidebar)
+        self.btn_toggle_sidebar.setMaximumWidth(40)
+        self.btn_toggle_sidebar.setToolTip("Hide Sidebar")
+        toggle_button_layout.addWidget(self.btn_toggle_sidebar)
+        toggle_button_layout.addStretch()
+        right_layout.insertLayout(0, toggle_button_layout)
+
+        # Store left panel reference for toggling
+        self.left_panel = left_panel
+        self.sidebar_visible = True
+
+        layout.addWidget(self.splitter)
+
+    def toggle_sidebar(self):
+        """Toggle sidebar visibility."""
+        if self.sidebar_visible:
+            # Hide sidebar
+            self.left_panel.hide()
+            self.btn_toggle_sidebar.setText("Show Sidebar")
+            self.btn_toggle_sidebar.setMaximumWidth(150)
+            self.btn_toggle_sidebar.setToolTip("Show Sidebar")
+            self.sidebar_visible = False
+        else:
+            # Show sidebar
+            self.left_panel.show()
+            self.btn_toggle_sidebar.setText("<<")
+            self.btn_toggle_sidebar.setMaximumWidth(40)
+            self.btn_toggle_sidebar.setToolTip("Hide Sidebar")
+            self.sidebar_visible = True
 
     def load_snippets(self):
         """Load all snippets into the list."""
