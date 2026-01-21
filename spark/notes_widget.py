@@ -4,13 +4,15 @@ import html
 import os
 import re
 import shutil
+import secrets
+from datetime import datetime
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QPushButton, QTextEdit, QTabWidget, QSplitter, QLineEdit,
     QMessageBox, QInputDialog, QFileDialog, QMenu, QTextBrowser
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl, QMimeData
 from PyQt6.QtGui import QTextCursor, QImage, QAction, QDesktopServices
 import markdown
 from markdown.extensions import Extension
@@ -135,6 +137,49 @@ class CodeHighlightExtension(Extension):
         md.preprocessors.register(CodeBlockPreprocessor(md), 'codehighlight', 90)
 
 
+class ImageTextEdit(QTextEdit):
+    """Custom QTextEdit with drag-and-drop and paste support for images."""
+
+    image_inserted = pyqtSignal(str)  # Emits the image path when an image is inserted
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+
+    def canInsertFromMimeData(self, source: QMimeData) -> bool:
+        """Check if the mime data contains an image or file."""
+        return source.hasImage() or source.hasUrls() or source.hasText()
+
+    def insertFromMimeData(self, source: QMimeData):
+        """Handle pasted or dropped content."""
+        # Handle image data directly from clipboard
+        if source.hasImage():
+            image = source.imageData()
+            if isinstance(image, QImage) and not image.isNull():
+                self.image_inserted.emit(image)
+                return
+
+        # Handle file URLs (drag and drop)
+        if source.hasUrls():
+            urls = source.urls()
+            if urls:
+                for url in urls:
+                    if url.isLocalFile():
+                        file_path = url.toLocalFile()
+                        # Check if it's an image file
+                        if self._is_image_file(file_path):
+                            self.image_inserted.emit(file_path)
+                            return
+
+        # Fall back to default text insertion
+        super().insertFromMimeData(source)
+
+    def _is_image_file(self, file_path: str) -> bool:
+        """Check if a file is an image based on extension."""
+        image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp'}
+        return Path(file_path).suffix.lower() in image_extensions
+
+
 class NotesWidget(QWidget):
     """Widget for managing hierarchical notes with Markdown support."""
 
@@ -203,10 +248,10 @@ class NotesWidget(QWidget):
         # Tab widget for editor and preview
         self.tabs = QTabWidget()
 
-        # Editor tab
-        self.editor = QTextEdit()
-        self.editor.setAcceptDrops(True)
+        # Editor tab (using ImageTextEdit for drag-and-drop support)
+        self.editor = ImageTextEdit()
         self.editor.textChanged.connect(self.mark_modified)
+        self.editor.image_inserted.connect(self.handle_image_insert)
         self.editor.setTabStopDistance(
             self.config.get('editor_tab_width', 4) *
             self.editor.fontMetrics().horizontalAdvance(' ')
@@ -312,8 +357,111 @@ class NotesWidget(QWidget):
             self.load_notes()
             self.note_modified.emit()
 
+    def _extract_image_filenames(self, content: str) -> list:
+        """Extract image filenames from markdown content.
+
+        Args:
+            content: Markdown content to parse
+
+        Returns:
+            List of image filenames found in the content
+        """
+        if not content:
+            return []
+
+        # Match markdown image syntax: ![alt text](filename)
+        # This matches both local filenames and paths
+        pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+        matches = re.findall(pattern, content)
+
+        filenames = []
+        for alt_text, path in matches:
+            # Skip remote URLs
+            if path.startswith(('http://', 'https://', 'ftp://', '//')):
+                continue
+            # Skip file:// URLs (these are already resolved paths)
+            if path.startswith('file://'):
+                continue
+            # Extract just the filename (remove any path components)
+            filename = Path(path).name
+            filenames.append(filename)
+
+        return filenames
+
+    def _collect_note_images(self, note_id: int, collected_ids=None) -> list:
+        """Recursively collect all image filenames from a note and its children.
+
+        Args:
+            note_id: ID of the note to process
+            collected_ids: Set of already processed note IDs (to avoid duplicates)
+
+        Returns:
+            List of image filenames (may contain duplicates)
+        """
+        if collected_ids is None:
+            collected_ids = set()
+
+        # Avoid processing the same note twice
+        if note_id in collected_ids:
+            return []
+
+        collected_ids.add(note_id)
+        images = []
+
+        # Get the note content
+        note = self.database.get_note(note_id)
+        if note and note['content']:
+            note_images = self._extract_image_filenames(note['content'])
+            images.extend(note_images)
+            if note_images:
+                print(f"Found {len(note_images)} image(s) in note '{note['title']}': {note_images}")
+
+        # Recursively process children
+        children = self.database.get_child_notes(note_id)
+        for child in children:
+            images.extend(self._collect_note_images(child['id'], collected_ids))
+
+        return images
+
+    def _delete_note_images(self, note_id: int):
+        """Delete all images associated with a note and its children.
+
+        Args:
+            note_id: ID of the note whose images should be deleted
+        """
+        # Collect all image filenames
+        image_filenames = self._collect_note_images(note_id)
+
+        if not image_filenames:
+            print("No images found to delete")
+            return
+
+        # Remove duplicates while preserving order
+        unique_images = list(dict.fromkeys(image_filenames))
+        print(f"Collected {len(unique_images)} unique image(s) to delete: {unique_images}")
+
+        images_dir = self.config.get_images_dir()
+        deleted_count = 0
+        not_found_count = 0
+
+        for filename in unique_images:
+            image_path = images_dir / filename
+            try:
+                if image_path.exists():
+                    image_path.unlink()
+                    deleted_count += 1
+                    print(f"  ✓ Deleted: {filename}")
+                else:
+                    not_found_count += 1
+                    print(f"  ⚠ Not found: {filename}")
+            except Exception as e:
+                # Log error but continue deleting other images
+                print(f"  ✗ Failed to delete {filename}: {e}")
+
+        print(f"Summary: Deleted {deleted_count} image(s), {not_found_count} not found")
+
     def delete_note(self):
-        """Delete the selected note."""
+        """Delete the selected note and its associated images."""
         current_item = self.tree.currentItem()
         if not current_item:
             QMessageBox.warning(self, "No Selection", "Please select a note to delete.")
@@ -327,7 +475,13 @@ class NotesWidget(QWidget):
 
         if reply == QMessageBox.StandardButton.Yes:
             note_id = current_item.data(0, Qt.ItemDataRole.UserRole)
+
+            # Delete associated images first
+            self._delete_note_images(note_id)
+
+            # Then delete the note from database
             self.database.delete_note(note_id)
+
             self.load_notes()
             self.clear_editor()
             self.note_modified.emit()
@@ -361,8 +515,114 @@ class NotesWidget(QWidget):
         if index == 1:  # Preview tab
             self.update_preview()
 
+    def _generate_unique_filename(self, original_name: str, images_dir: Path) -> str:
+        """Generate a unique filename with random suffix."""
+        original_path = Path(original_name)
+        stem = original_path.stem
+        suffix = original_path.suffix
+
+        # Generate a random 8-character hex string
+        random_suffix = secrets.token_hex(4)  # 4 bytes = 8 hex characters
+
+        # Create filename with random suffix
+        filename = f"{stem}_{random_suffix}{suffix}"
+        destination_path = images_dir / filename
+
+        # In the unlikely event of a collision, keep trying
+        while destination_path.exists():
+            random_suffix = secrets.token_hex(4)
+            filename = f"{stem}_{random_suffix}{suffix}"
+            destination_path = images_dir / filename
+
+        return filename
+
+    def _copy_image_to_storage(self, source_path: Path) -> str:
+        """Copy an image to the images directory and return the filename.
+
+        Returns:
+            str: The filename (not full path) of the copied image
+
+        Raises:
+            Exception: If the image is too large or copying fails
+        """
+        # Validate file size (10MB limit for security)
+        MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
+        file_size = source_path.stat().st_size
+        if file_size > MAX_IMAGE_SIZE:
+            raise Exception(
+                f"Image must be less than 10MB. Selected file is {file_size / (1024*1024):.1f}MB."
+            )
+
+        # Get the images directory from config
+        images_dir = self.config.get_images_dir()
+
+        # Generate a unique filename with random suffix
+        destination_filename = self._generate_unique_filename(source_path.name, images_dir)
+        destination_path = images_dir / destination_filename
+
+        # Copy the image to the images directory
+        shutil.copy2(source_path, destination_path)
+
+        return destination_filename
+
+    def _save_qimage_to_storage(self, image: QImage) -> str:
+        """Save a QImage to the images directory and return the filename.
+
+        Returns:
+            str: The filename (not full path) of the saved image
+
+        Raises:
+            Exception: If saving fails
+        """
+        # Get the images directory from config
+        images_dir = self.config.get_images_dir()
+
+        # Generate a unique filename with timestamp and random suffix
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        random_suffix = secrets.token_hex(4)
+        filename = f"pasted_image_{timestamp}_{random_suffix}.png"
+        destination_path = images_dir / filename
+
+        # Save the image
+        if not image.save(str(destination_path), "PNG"):
+            raise Exception("Failed to save image")
+
+        return filename
+
+    def handle_image_insert(self, image_data):
+        """Handle image insertion from drag-and-drop or paste.
+
+        Args:
+            image_data: Either a file path (str) or a QImage object
+        """
+        try:
+            if isinstance(image_data, QImage):
+                # Handle pasted image from clipboard
+                filename = self._save_qimage_to_storage(image_data)
+            else:
+                # Handle dropped file path
+                source_path = Path(image_data)
+                filename = self._copy_image_to_storage(source_path)
+
+            # Insert markdown image syntax
+            image_markdown = f"![{filename}]({filename})"
+
+            # Insert at cursor position
+            cursor = self.editor.textCursor()
+            cursor.insertText(image_markdown)
+
+            # Mark as modified
+            self.mark_modified()
+
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Image Insert Failed",
+                f"Failed to insert image: {str(e)}"
+            )
+
     def insert_image(self):
-        """Insert an image into the note."""
+        """Insert an image into the note via file dialog."""
         # Open file dialog to select an image
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -374,62 +634,8 @@ class NotesWidget(QWidget):
         if not file_path:
             return
 
-        try:
-            source_path = Path(file_path)
-
-            # Validate file size (10MB limit for security)
-            MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
-            file_size = source_path.stat().st_size
-            if file_size > MAX_IMAGE_SIZE:
-                QMessageBox.warning(
-                    self,
-                    "File Too Large",
-                    f"Image must be less than 10MB. Selected file is {file_size / (1024*1024):.1f}MB."
-                )
-                return
-
-            # Get the images directory from config
-            images_dir = self.config.get_images_dir()
-
-            # Generate a unique filename to avoid conflicts
-            destination_filename = source_path.name
-            destination_path = images_dir / destination_filename
-
-            # Handle duplicate filenames
-            counter = 1
-            while destination_path.exists():
-                stem = source_path.stem
-                suffix = source_path.suffix
-                destination_filename = f"{stem}_{counter}{suffix}"
-                destination_path = images_dir / destination_filename
-                counter += 1
-
-            # Copy the image to the images directory
-            shutil.copy2(source_path, destination_path)
-
-            # Insert markdown image syntax with relative path
-            # The path is just the filename, which will be resolved relative to images/
-            image_markdown = f"![{destination_filename}]({destination_filename})"
-
-            # Insert at cursor position
-            cursor = self.editor.textCursor()
-            cursor.insertText(image_markdown)
-
-            # Mark as modified
-            self.mark_modified()
-
-            QMessageBox.information(
-                self,
-                "Image Inserted",
-                f"Image copied to images folder and inserted as:\n{image_markdown}"
-            )
-
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"Failed to insert image: {str(e)}"
-            )
+        # Use the common handler
+        self.handle_image_insert(file_path)
 
     def update_preview(self):
         """Update the preview pane with rendered Markdown."""
