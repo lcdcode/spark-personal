@@ -8,10 +8,10 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLineEdit, QListWidget, QSplitter, QInputDialog,
-    QMessageBox, QHeaderView, QMenu, QAbstractItemView
+    QMessageBox, QHeaderView, QMenu, QAbstractItemView, QLabel
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QKeyEvent
+from PyQt6.QtGui import QAction, QKeyEvent, QFont
 from typing import Dict, Any, Optional
 
 
@@ -448,6 +448,40 @@ class SpreadsheetWidget(QWidget):
         formula_layout.addWidget(self.btn_recalc)
         right_layout.addLayout(formula_layout)
 
+        # Formatting toolbar
+        format_layout = QHBoxLayout()
+        self.btn_bold = QPushButton("B")
+        self.btn_bold.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.btn_bold.setCheckable(True)
+        self.btn_bold.setMaximumWidth(40)
+        self.btn_bold.clicked.connect(self.toggle_bold)
+        self.btn_bold.setToolTip("Bold (Ctrl+B)")
+
+        self.btn_italic = QPushButton("I")
+        italic_font = QFont("Arial", 10)
+        italic_font.setItalic(True)
+        self.btn_italic.setFont(italic_font)
+        self.btn_italic.setCheckable(True)
+        self.btn_italic.setMaximumWidth(40)
+        self.btn_italic.clicked.connect(self.toggle_italic)
+        self.btn_italic.setToolTip("Italic (Ctrl+I)")
+
+        self.btn_underline = QPushButton("U")
+        underline_font = QFont("Arial", 10)
+        underline_font.setUnderline(True)
+        self.btn_underline.setFont(underline_font)
+        self.btn_underline.setCheckable(True)
+        self.btn_underline.setMaximumWidth(40)
+        self.btn_underline.clicked.connect(self.toggle_underline)
+        self.btn_underline.setToolTip("Underline (Ctrl+U)")
+
+        format_layout.addWidget(QLabel("Format:"))
+        format_layout.addWidget(self.btn_bold)
+        format_layout.addWidget(self.btn_italic)
+        format_layout.addWidget(self.btn_underline)
+        format_layout.addStretch()
+        right_layout.addLayout(format_layout)
+
         # Table
         self.table = SpreadsheetTableWidget(100, 26)
         self.table.setHorizontalHeaderLabels([self.col_name(i) for i in range(26)])
@@ -539,6 +573,22 @@ class SpreadsheetWidget(QWidget):
                         item.setData(Qt.ItemDataRole.UserRole, str(value))
                     self.table.setItem(row, col, item)
 
+            # Load cell formatting if available
+            if isinstance(sheet_data, dict) and 'cell_formatting' in sheet_data:
+                for cell_ref, formatting in sheet_data['cell_formatting'].items():
+                    row, col = self.parse_cell_ref(cell_ref)
+                    if row < self.table.rowCount() and col < self.table.columnCount():
+                        item = self.table.item(row, col)
+                        if item:
+                            font = item.font()
+                            if formatting.get('bold'):
+                                font.setBold(True)
+                            if formatting.get('italic'):
+                                font.setItalic(True)
+                            if formatting.get('underline'):
+                                font.setUnderline(True)
+                            item.setFont(font)
+
             # Load column widths if available
             if isinstance(sheet_data, dict) and 'column_widths' in sheet_data:
                 for col_idx, width in sheet_data['column_widths'].items():
@@ -568,6 +618,7 @@ class SpreadsheetWidget(QWidget):
     def get_sheet_data(self) -> str:
         """Get current sheet data as JSON."""
         cells = {}
+        cell_formatting = {}
         for row in range(self.table.rowCount()):
             for col in range(self.table.columnCount()):
                 item = self.table.item(row, col)
@@ -579,6 +630,19 @@ class SpreadsheetWidget(QWidget):
                         cells[cell_ref] = formula
                     elif item.text():
                         cells[cell_ref] = item.text()
+
+                    # Save formatting if non-default
+                    font = item.font()
+                    formatting = {}
+                    if font.bold():
+                        formatting['bold'] = True
+                    if font.italic():
+                        formatting['italic'] = True
+                    if font.underline():
+                        formatting['underline'] = True
+
+                    if formatting:
+                        cell_formatting[cell_ref] = formatting
 
         # Save column widths (only non-default widths to save space)
         column_widths = {}
@@ -600,7 +664,8 @@ class SpreadsheetWidget(QWidget):
         sheet_data = {
             'cells': cells,
             'column_widths': column_widths,
-            'row_heights': row_heights
+            'row_heights': row_heights,
+            'cell_formatting': cell_formatting
         }
 
         return json.dumps(sheet_data)
@@ -617,6 +682,9 @@ class SpreadsheetWidget(QWidget):
                 self.formula_bar.setText(item.text())
         else:
             self.formula_bar.clear()
+
+        # Update formatting buttons to reflect current cell's formatting
+        self.update_format_buttons()
 
     def on_header_resized(self, index, old_size, new_size):
         """Handle column/row header resize."""
@@ -795,6 +863,70 @@ class SpreadsheetWidget(QWidget):
             self.undo_stack.append(current_state)
             next_state = self.redo_stack.pop()
             self.load_sheet_data(next_state)
+
+    def toggle_bold(self):
+        """Toggle bold formatting for selected cell(s)."""
+        self.apply_formatting('bold', self.btn_bold.isChecked())
+
+    def toggle_italic(self):
+        """Toggle italic formatting for selected cell(s)."""
+        self.apply_formatting('italic', self.btn_italic.isChecked())
+
+    def toggle_underline(self):
+        """Toggle underline formatting for selected cell(s)."""
+        self.apply_formatting('underline', self.btn_underline.isChecked())
+
+    def apply_formatting(self, format_type: str, enabled: bool):
+        """Apply formatting to selected cells."""
+        selected_ranges = self.table.selectedRanges()
+
+        if not selected_ranges:
+            # If no selection, format current cell
+            current = self.table.currentItem()
+            if current:
+                self._apply_cell_formatting(current, format_type, enabled)
+            return
+
+        # Apply to all selected cells
+        for selected_range in selected_ranges:
+            for row in range(selected_range.topRow(), selected_range.bottomRow() + 1):
+                for col in range(selected_range.leftColumn(), selected_range.rightColumn() + 1):
+                    item = self.table.item(row, col)
+                    if not item:
+                        item = QTableWidgetItem()
+                        self.table.setItem(row, col, item)
+                    self._apply_cell_formatting(item, format_type, enabled)
+
+        self.is_modified = True
+        self.sheet_modified.emit()
+
+    def _apply_cell_formatting(self, item: QTableWidgetItem, format_type: str, enabled: bool):
+        """Apply specific formatting to a cell item."""
+        font = item.font()
+
+        if format_type == 'bold':
+            font.setBold(enabled)
+        elif format_type == 'italic':
+            font.setItalic(enabled)
+        elif format_type == 'underline':
+            font.setUnderline(enabled)
+
+        item.setFont(font)
+
+    def update_format_buttons(self):
+        """Update format button states based on current cell formatting."""
+        current = self.table.currentItem()
+
+        if current:
+            font = current.font()
+            self.btn_bold.setChecked(font.bold())
+            self.btn_italic.setChecked(font.italic())
+            self.btn_underline.setChecked(font.underline())
+        else:
+            # No cell selected, reset buttons
+            self.btn_bold.setChecked(False)
+            self.btn_italic.setChecked(False)
+            self.btn_underline.setChecked(False)
 
     def show_context_menu(self, position):
         """Show context menu for the sheet list."""

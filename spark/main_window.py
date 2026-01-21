@@ -172,10 +172,13 @@ class MainWindow(QMainWindow):
 
         # Search bar in status bar
         self.search_widget = QWidget()
+        self.search_widget.setStyleSheet("QWidget { background: transparent; }")
         search_layout = QHBoxLayout(self.search_widget)
         search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(2)  # Minimal spacing between label and input
 
         search_label = QLabel("Search:")
+        search_label.setStyleSheet("QLabel { background: transparent; border: none; padding: 0; margin: 0; margin-right: 0px; }")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search notes or snippets...")
         self.search_input.returnPressed.connect(self.perform_search)
