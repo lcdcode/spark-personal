@@ -1,0 +1,827 @@
+"""Spreadsheet widget with formula engine."""
+
+import json
+import re
+import ast
+import operator
+from datetime import datetime
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QPushButton, QLineEdit, QListWidget, QSplitter, QInputDialog,
+    QMessageBox, QHeaderView, QMenu, QAbstractItemView
+)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QKeyEvent
+from typing import Dict, Any, Optional
+
+
+class SafeExpressionEvaluator:
+    """Safe expression evaluator using AST parsing instead of eval()."""
+
+    # Allowed operators
+    OPERATORS = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
+        ast.USub: operator.neg,
+        ast.UAdd: operator.pos,
+    }
+
+    # Allowed comparison operators
+    COMPARISONS = {
+        ast.Eq: operator.eq,
+        ast.NotEq: operator.ne,
+        ast.Lt: operator.lt,
+        ast.LtE: operator.le,
+        ast.Gt: operator.gt,
+        ast.GtE: operator.ge,
+    }
+
+    # Allowed boolean operators
+    BOOL_OPS = {
+        ast.And: lambda x, y: x and y,
+        ast.Or: lambda x, y: x or y,
+    }
+
+    @staticmethod
+    def evaluate(expr: str) -> Any:
+        """Safely evaluate a mathematical expression."""
+        try:
+            node = ast.parse(expr, mode='eval').body
+            return SafeExpressionEvaluator._eval_node(node)
+        except Exception as e:
+            raise ValueError(f"Invalid expression: {str(e)}")
+
+    @staticmethod
+    def _eval_node(node):
+        """Recursively evaluate AST nodes."""
+        if isinstance(node, ast.Constant):  # Python 3.8+
+            return node.value
+        elif isinstance(node, ast.Num):  # Legacy support
+            return node.n
+        elif isinstance(node, ast.Str):  # Legacy support
+            return node.s
+        elif isinstance(node, ast.UnaryOp):
+            op = SafeExpressionEvaluator.OPERATORS.get(type(node.op))
+            if op is None:
+                raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
+            operand = SafeExpressionEvaluator._eval_node(node.operand)
+            return op(operand)
+        elif isinstance(node, ast.BinOp):
+            op = SafeExpressionEvaluator.OPERATORS.get(type(node.op))
+            if op is None:
+                raise ValueError(f"Unsupported binary operator: {type(node.op).__name__}")
+            left = SafeExpressionEvaluator._eval_node(node.left)
+            right = SafeExpressionEvaluator._eval_node(node.right)
+            return op(left, right)
+        elif isinstance(node, ast.Compare):
+            if len(node.ops) != 1:
+                raise ValueError("Chained comparisons not supported")
+            op = SafeExpressionEvaluator.COMPARISONS.get(type(node.ops[0]))
+            if op is None:
+                raise ValueError(f"Unsupported comparison: {type(node.ops[0]).__name__}")
+            left = SafeExpressionEvaluator._eval_node(node.left)
+            right = SafeExpressionEvaluator._eval_node(node.comparators[0])
+            return op(left, right)
+        elif isinstance(node, ast.BoolOp):
+            op = SafeExpressionEvaluator.BOOL_OPS.get(type(node.op))
+            if op is None:
+                raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
+            values = [SafeExpressionEvaluator._eval_node(v) for v in node.values]
+            result = values[0]
+            for val in values[1:]:
+                result = op(result, val)
+            return result
+        elif isinstance(node, ast.NameConstant):  # True, False, None (Python 3.7)
+            return node.value
+        else:
+            raise ValueError(f"Unsupported expression type: {type(node).__name__}")
+
+
+class FormulaEngine:
+    """Simple formula engine for spreadsheet calculations."""
+
+    def __init__(self, cells: Dict[str, Any]):
+        self.cells = cells
+
+    def evaluate(self, formula: str) -> Any:
+        """Evaluate a formula."""
+        if not formula.startswith('='):
+            return formula
+
+        formula = formula[1:].strip()
+
+        # Normalize single = to == for equality comparisons
+        # (but not in cell ranges or function calls)
+        formula = self.normalize_equality_operator(formula)
+
+        # Handle functions first (preserves cell references in function arguments)
+        formula = self.handle_functions(formula)
+
+        # Replace cell references with values after function handling
+        formula = self.replace_cell_references(formula)
+
+        # Check if the result is a quoted string (from DATE function, etc.)
+        # If so, return it directly without eval
+        if formula.startswith('"') and formula.endswith('"'):
+            return formula[1:-1]  # Remove quotes and return the string
+
+        try:
+            result = SafeExpressionEvaluator.evaluate(formula)
+            return result
+        except Exception as e:
+            return f"#ERROR: {str(e)}"
+
+    def normalize_equality_operator(self, formula: str) -> str:
+        """
+        Convert single = to == for equality comparisons.
+        This allows users to write formulas like IF(A1=5,10,20) instead of IF(A1==5,10,20).
+
+        Strategy: Replace = with == only when it's not already ==, !=, <=, or >=
+        """
+        # Replace = with == but skip ==, !=, <=, >=
+        # Use negative lookbehind and negative lookahead to avoid double replacement
+        normalized = re.sub(
+            r'(?<![=!<>])=(?!=)',  # Match = not preceded by =!<> and not followed by =
+            '==',
+            formula
+        )
+
+        # Also convert ^ to ** for exponentiation (Excel-style)
+        normalized = normalized.replace('^', '**')
+
+        return normalized
+
+    def replace_cell_references(self, formula: str) -> str:
+        """Replace cell references (A1, B2, etc.) with their values."""
+        pattern = r'\b([A-Z]+)(\d+)\b'
+
+        def replace(match):
+            cell_ref = match.group(0)
+            value = self.cells.get(cell_ref, 0)
+            if isinstance(value, str) and value.startswith('='):
+                value = self.evaluate(value)
+
+            # Try to convert to float first
+            try:
+                return str(float(value))
+            except (ValueError, TypeError):
+                # Check if it's a date string (YYYY-MM-DD format)
+                if isinstance(value, str):
+                    try:
+                        # Try parsing as date
+                        date_obj = datetime.strptime(value, "%Y-%m-%d")
+                        # Convert to timestamp (days since epoch)
+                        timestamp = date_obj.timestamp() / 86400
+                        return str(timestamp)
+                    except ValueError:
+                        pass
+                return '0'
+
+        return re.sub(pattern, replace, formula)
+
+    def handle_functions(self, formula: str) -> str:
+        """Handle spreadsheet functions."""
+        # Process in multiple passes to handle nested functions properly
+
+        # First pass: Replace TODAY() and NOW() with numeric values
+        # TODAY function - returns numeric timestamp (days since epoch)
+        today_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() / 86400
+        formula = re.sub(r'TODAY\(\)', str(today_timestamp), formula, flags=re.IGNORECASE)
+
+        # NOW function - returns numeric timestamp (days since epoch with fractional part for time)
+        now_timestamp = datetime.now().timestamp() / 86400
+        formula = re.sub(r'NOW\(\)', str(now_timestamp), formula, flags=re.IGNORECASE)
+
+        # Second pass: Process other functions that may use TODAY/NOW results
+        # SUM function
+        formula = re.sub(
+            r'SUM\((.*?)\)',
+            lambda m: str(self.func_sum(m.group(1))),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # AVERAGE function
+        formula = re.sub(
+            r'AVERAGE\((.*?)\)',
+            lambda m: str(self.func_average(m.group(1))),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # IF function
+        formula = re.sub(
+            r'IF\((.*?),(.*?),(.*?)\)',
+            lambda m: self.func_if(m.group(1), m.group(2), m.group(3)),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # DATE function - converts a numeric timestamp back to date string
+        # Process this last so it can work with results from other functions
+        formula = re.sub(
+            r'DATE\((.*?)\)',
+            lambda m: self.func_date(m.group(1)),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # Boolean functions
+        formula = formula.replace('AND(True,True)', 'True')
+        formula = formula.replace('OR(False,False)', 'False')
+        formula = formula.replace('NOT(True)', 'False')
+        formula = formula.replace('NOT(False)', 'True')
+
+        return formula
+
+    def func_sum(self, args: str) -> float:
+        """SUM function implementation."""
+        values = self._parse_function_args(args)
+        return sum(values)
+
+    def func_average(self, args: str) -> float:
+        """AVERAGE function implementation."""
+        values = self._parse_function_args(args)
+        return sum(values) / len(values) if values else 0
+
+    def _parse_function_args(self, args: str) -> list:
+        """Parse function arguments including cell references and ranges."""
+        values = []
+        parts = [p.strip() for p in args.split(',')]
+
+        for part in parts:
+            # Check if it's a range (e.g., B3:B4)
+            if ':' in part:
+                values.extend(self._expand_range(part))
+            # Check if it's a cell reference (e.g., B3)
+            elif re.match(r'^[A-Z]+\d+$', part):
+                cell_value = self.cells.get(part, 0)
+                # If cell contains a formula, evaluate it
+                if isinstance(cell_value, str) and cell_value.startswith('='):
+                    cell_value = self.evaluate(cell_value)
+                try:
+                    values.append(float(cell_value))
+                except (ValueError, TypeError):
+                    values.append(0)
+            # Otherwise, it's a literal number
+            else:
+                try:
+                    values.append(float(part))
+                except (ValueError, TypeError):
+                    pass
+
+        return values
+
+    def _expand_range(self, range_str: str) -> list:
+        """Expand a cell range (e.g., B3:B4) into individual values."""
+        match = re.match(r'([A-Z]+)(\d+):([A-Z]+)(\d+)', range_str)
+        if not match:
+            return []
+
+        start_col, start_row, end_col, end_row = match.groups()
+        start_row, end_row = int(start_row), int(end_row)
+
+        values = []
+        # Handle single column range (most common, e.g., B3:B4)
+        if start_col == end_col:
+            for row in range(start_row, end_row + 1):
+                cell_ref = f"{start_col}{row}"
+                cell_value = self.cells.get(cell_ref, 0)
+                # If cell contains a formula, evaluate it
+                if isinstance(cell_value, str) and cell_value.startswith('='):
+                    cell_value = self.evaluate(cell_value)
+                try:
+                    values.append(float(cell_value))
+                except (ValueError, TypeError):
+                    values.append(0)
+        else:
+            # Handle multi-column ranges (e.g., A1:B2)
+            start_col_idx = sum((ord(c) - 65) * (26 ** i) for i, c in enumerate(reversed(start_col)))
+            end_col_idx = sum((ord(c) - 65) * (26 ** i) for i, c in enumerate(reversed(end_col)))
+
+            for row in range(start_row, end_row + 1):
+                for col_idx in range(start_col_idx, end_col_idx + 1):
+                    # Convert column index back to letter
+                    col_name = ""
+                    temp_idx = col_idx
+                    while temp_idx >= 0:
+                        col_name = chr(65 + (temp_idx % 26)) + col_name
+                        temp_idx = temp_idx // 26 - 1
+
+                    cell_ref = f"{col_name}{row}"
+                    cell_value = self.cells.get(cell_ref, 0)
+                    # If cell contains a formula, evaluate it
+                    if isinstance(cell_value, str) and cell_value.startswith('='):
+                        cell_value = self.evaluate(cell_value)
+                    try:
+                        values.append(float(cell_value))
+                    except (ValueError, TypeError):
+                        values.append(0)
+
+        return values
+
+    def func_if(self, condition: str, true_val: str, false_val: str) -> str:
+        """IF function implementation."""
+        try:
+            # Replace cell references in condition
+            condition = self.replace_cell_references(condition)
+            result = SafeExpressionEvaluator.evaluate(condition)
+            return true_val if result else false_val
+        except Exception as e:
+            # Return false value if condition evaluation fails
+            return false_val
+
+    def func_date(self, args: str) -> str:
+        """DATE function - converts numeric timestamp (days since epoch) back to date string."""
+        args = args.strip()
+
+        # First, replace any cell references in the argument
+        args = self.replace_cell_references(args)
+
+        try:
+            # Evaluate the expression to get the numeric value
+            timestamp = SafeExpressionEvaluator.evaluate(args)
+            # Convert from days to seconds and create datetime
+            date_obj = datetime.fromtimestamp(float(timestamp) * 86400)
+            # Return formatted date string in quotes (so it's treated as a string in the formula)
+            return f'"{date_obj.strftime("%Y-%m-%d")}"'
+        except Exception as e:
+            return f'"#ERROR: {str(e)}"'
+
+
+class SpreadsheetTableWidget(QTableWidget):
+    """Custom table widget with Enter key navigation."""
+
+    def keyPressEvent(self, event: QKeyEvent):
+        """Handle key press events."""
+        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            # Check if we're currently editing a cell
+            if self.state() != QAbstractItemView.State.EditingState:
+                # Not editing - move to cell below
+                current_row = self.currentRow()
+                current_col = self.currentColumn()
+                if current_row < self.rowCount() - 1:
+                    self.setCurrentCell(current_row + 1, current_col)
+                return
+        elif event.key() == Qt.Key.Key_Delete:
+            # Delete key - clear the current cell
+            if self.state() != QAbstractItemView.State.EditingState:
+                current_row = self.currentRow()
+                current_col = self.currentColumn()
+                if current_row >= 0 and current_col >= 0:
+                    # Clear the cell content
+                    item = self.item(current_row, current_col)
+                    if item:
+                        item.setText("")
+                return
+        # For all other keys or when editing, use default behavior
+        super().keyPressEvent(event)
+
+
+class SpreadsheetWidget(QWidget):
+    """Widget for managing spreadsheets."""
+
+    sheet_modified = pyqtSignal()
+
+    def __init__(self, database, config, parent=None):
+        super().__init__(parent)
+        self.database = database
+        self.config = config
+        self.current_sheet_id = None
+        self.current_sheet_name = None  # Track current sheet name separately
+        self.is_modified = False
+        self.undo_stack = []
+        self.redo_stack = []
+        self.autosave_timer = QTimer()
+        self.autosave_timer.timeout.connect(self.autosave)
+
+        self.init_ui()
+        self.load_sheets()
+
+        # Start autosave timer
+        if self.config.get('autosave_enabled', True):
+            interval = self.config.get('autosave_interval_seconds', 300) * 1000
+            self.autosave_timer.start(interval)
+
+    def init_ui(self):
+        """Initialize the UI components."""
+        layout = QHBoxLayout(self)
+
+        # Left panel: Sheet list
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+
+        self.sheet_list = QListWidget()
+        self.sheet_list.itemClicked.connect(self.on_sheet_selected)
+        self.sheet_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.sheet_list.customContextMenuRequested.connect(self.show_context_menu)
+        left_layout.addWidget(self.sheet_list)
+
+        # Buttons
+        button_layout = QVBoxLayout()
+        self.btn_add = QPushButton("New Sheet")
+        self.btn_add.clicked.connect(self.add_sheet)
+        self.btn_delete = QPushButton("Delete")
+        self.btn_delete.clicked.connect(self.delete_sheet)
+        button_layout.addWidget(self.btn_add)
+        button_layout.addWidget(self.btn_delete)
+        left_layout.addLayout(button_layout)
+
+        # Right panel: Spreadsheet
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+
+        # Formula bar
+        formula_layout = QHBoxLayout()
+        self.formula_bar = QLineEdit()
+        self.formula_bar.setPlaceholderText("Formula bar (enter formula or value)")
+        self.formula_bar.returnPressed.connect(self.on_formula_enter)
+        formula_layout.addWidget(self.formula_bar)
+
+        self.btn_recalc = QPushButton("Recalculate")
+        self.btn_recalc.clicked.connect(self.recalculate)
+        formula_layout.addWidget(self.btn_recalc)
+        right_layout.addLayout(formula_layout)
+
+        # Table
+        self.table = SpreadsheetTableWidget(100, 26)
+        self.table.setHorizontalHeaderLabels([self.col_name(i) for i in range(26)])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.currentCellChanged.connect(self.on_cell_selected)
+        self.table.itemChanged.connect(self.on_cell_changed)
+
+        # Connect header resize events to mark sheet as modified
+        self.table.horizontalHeader().sectionResized.connect(self.on_header_resized)
+        self.table.verticalHeader().sectionResized.connect(self.on_header_resized)
+
+        right_layout.addWidget(self.table)
+
+        # Undo/Redo buttons
+        undo_layout = QHBoxLayout()
+        self.btn_undo = QPushButton("Undo")
+        self.btn_undo.clicked.connect(self.undo)
+        self.btn_redo = QPushButton("Redo")
+        self.btn_redo.clicked.connect(self.redo)
+        self.btn_save = QPushButton("Save")
+        self.btn_save.clicked.connect(self.save_current_sheet)
+        undo_layout.addWidget(self.btn_undo)
+        undo_layout.addWidget(self.btn_redo)
+        undo_layout.addWidget(self.btn_save)
+        right_layout.addLayout(undo_layout)
+
+        # Splitter
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 4)
+
+        layout.addWidget(splitter)
+
+    def col_name(self, index: int) -> str:
+        """Convert column index to letter (0->A, 1->B, etc.)."""
+        name = ""
+        while index >= 0:
+            name = chr(65 + (index % 26)) + name
+            index = index // 26 - 1
+        return name
+
+    def cell_ref(self, row: int, col: int) -> str:
+        """Get cell reference (e.g., A1)."""
+        return f"{self.col_name(col)}{row + 1}"
+
+    def load_sheets(self):
+        """Load spreadsheets into the list."""
+        self.sheet_list.clear()
+        sheets = self.database.get_all_spreadsheets()
+        for sheet in sheets:
+            self.sheet_list.addItem(sheet['name'])
+            # Get the item that was just added
+            item = self.sheet_list.item(self.sheet_list.count() - 1)
+            item.setData(Qt.ItemDataRole.UserRole, sheet['id'])
+
+    def on_sheet_selected(self, item):
+        """Handle sheet selection."""
+        if self.is_modified:
+            self.save_current_sheet()
+
+        sheet_id = item.data(Qt.ItemDataRole.UserRole)
+        sheet = self.database.get_spreadsheet(sheet_id)
+
+        if sheet:
+            self.current_sheet_id = sheet_id
+            self.current_sheet_name = sheet['name']  # Store the name
+            self.load_sheet_data(sheet['data'])
+            self.is_modified = False
+
+    def load_sheet_data(self, data: str):
+        """Load sheet data into the table."""
+        self.table.blockSignals(True)
+        self.table.clearContents()
+
+        try:
+            sheet_data = json.loads(data) if data else {}
+
+            # Load cell data (backward compatible with old format)
+            cells = sheet_data if isinstance(sheet_data, dict) and 'cells' not in sheet_data else sheet_data.get('cells', {})
+
+            for cell_ref, value in cells.items():
+                row, col = self.parse_cell_ref(cell_ref)
+                if row < self.table.rowCount() and col < self.table.columnCount():
+                    item = QTableWidgetItem(str(value))
+                    # If value is a formula, store it in UserRole
+                    if str(value).startswith('='):
+                        item.setData(Qt.ItemDataRole.UserRole, str(value))
+                    self.table.setItem(row, col, item)
+
+            # Load column widths if available
+            if isinstance(sheet_data, dict) and 'column_widths' in sheet_data:
+                for col_idx, width in sheet_data['column_widths'].items():
+                    self.table.setColumnWidth(int(col_idx), width)
+
+            # Load row heights if available
+            if isinstance(sheet_data, dict) and 'row_heights' in sheet_data:
+                for row_idx, height in sheet_data['row_heights'].items():
+                    self.table.setRowHeight(int(row_idx), height)
+
+        except json.JSONDecodeError:
+            pass
+
+        self.table.blockSignals(False)
+        self.recalculate()
+
+    def parse_cell_ref(self, cell_ref: str):
+        """Parse cell reference (e.g., A1) to row, col."""
+        match = re.match(r'([A-Z]+)(\d+)', cell_ref)
+        if match:
+            col_str, row_str = match.groups()
+            col = sum((ord(c) - 65) * (26 ** i) for i, c in enumerate(reversed(col_str)))
+            row = int(row_str) - 1
+            return row, col
+        return 0, 0
+
+    def get_sheet_data(self) -> str:
+        """Get current sheet data as JSON."""
+        cells = {}
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item and (item.text() or item.data(Qt.ItemDataRole.UserRole)):
+                    cell_ref = self.cell_ref(row, col)
+                    # Save formula if present, otherwise save displayed value
+                    formula = item.data(Qt.ItemDataRole.UserRole)
+                    if formula and formula.startswith('='):
+                        cells[cell_ref] = formula
+                    elif item.text():
+                        cells[cell_ref] = item.text()
+
+        # Save column widths (only non-default widths to save space)
+        column_widths = {}
+        for col in range(self.table.columnCount()):
+            width = self.table.columnWidth(col)
+            # Save if different from default (typically 100 pixels)
+            if width != self.table.horizontalHeader().defaultSectionSize():
+                column_widths[str(col)] = width
+
+        # Save row heights (only non-default heights to save space)
+        row_heights = {}
+        for row in range(self.table.rowCount()):
+            height = self.table.rowHeight(row)
+            # Save if different from default (typically 30 pixels)
+            if height != self.table.verticalHeader().defaultSectionSize():
+                row_heights[str(row)] = height
+
+        # Create complete data structure
+        sheet_data = {
+            'cells': cells,
+            'column_widths': column_widths,
+            'row_heights': row_heights
+        }
+
+        return json.dumps(sheet_data)
+
+    def on_cell_selected(self, row, col, prev_row, prev_col):
+        """Handle cell selection."""
+        item = self.table.item(row, col)
+        if item:
+            # Show formula if stored, otherwise show cell text
+            formula = item.data(Qt.ItemDataRole.UserRole)
+            if formula and formula.startswith('='):
+                self.formula_bar.setText(formula)
+            else:
+                self.formula_bar.setText(item.text())
+        else:
+            self.formula_bar.clear()
+
+    def on_header_resized(self, index, old_size, new_size):
+        """Handle column/row header resize."""
+        if old_size != new_size:
+            self.is_modified = True
+
+    def on_cell_changed(self, item):
+        """Handle cell content change."""
+        self.is_modified = True
+        # Store for undo
+        self.undo_stack.append(self.get_sheet_data())
+        self.redo_stack.clear()
+
+        # Handle formula storage
+        if item:
+            text = item.text()
+            if text and text.startswith('='):
+                # Store the formula in UserRole if not already stored
+                stored_formula = item.data(Qt.ItemDataRole.UserRole)
+                if stored_formula != text:
+                    item.setData(Qt.ItemDataRole.UserRole, text)
+            elif not text:
+                # Cell was cleared
+                item.setData(Qt.ItemDataRole.UserRole, None)
+            # If text doesn't start with '=' and there's a stored formula, keep the formula
+            # (this happens after recalculate replaces formula with result)
+
+        # Recalculate formulas when cell content changes
+        self.recalculate()
+
+    def on_formula_enter(self):
+        """Handle formula bar input."""
+        current = self.table.currentItem()
+        if current:
+            text = self.formula_bar.text()
+            # If it's a formula, store it in UserRole
+            if text.startswith('='):
+                current.setData(Qt.ItemDataRole.UserRole, text)
+                current.setText(text)  # Temporarily show formula, will be replaced by result
+            else:
+                # Not a formula - clear UserRole and just set text
+                current.setData(Qt.ItemDataRole.UserRole, None)
+                current.setText(text)
+            self.recalculate()
+
+    def recalculate(self):
+        """Recalculate all formulas."""
+        self.table.blockSignals(True)
+
+        # Get all cell values (use stored formulas where available)
+        cells = {}
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item:
+                    # Check if there's a stored formula in the data
+                    formula = item.data(Qt.ItemDataRole.UserRole)
+                    if formula and formula.startswith('='):
+                        cells[self.cell_ref(row, col)] = formula
+                    else:
+                        cells[self.cell_ref(row, col)] = item.text()
+
+        # Evaluate formulas
+        engine = FormulaEngine(cells)
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item:
+                    # Check for formula in UserRole data or in cell text
+                    formula = item.data(Qt.ItemDataRole.UserRole)
+                    if formula is None and item.text().startswith('='):
+                        # First time seeing this formula - store it
+                        formula = item.text()
+                        item.setData(Qt.ItemDataRole.UserRole, formula)
+
+                    if formula and formula.startswith('='):
+                        result = engine.evaluate(formula)
+                        item.setText(str(result))
+                        item.setToolTip(f"Formula: {formula}")
+
+        self.table.blockSignals(False)
+
+    def add_sheet(self):
+        """Add a new spreadsheet."""
+        name, ok = QInputDialog.getText(self, "New Sheet", "Enter sheet name:")
+        if ok and name:
+            sheet_id = self.database.add_spreadsheet(name)
+            self.load_sheets()
+            self.sheet_modified.emit()
+
+    def rename_sheet(self):
+        """Rename the selected sheet."""
+        current_item = self.sheet_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "No Selection", "Please select a sheet to rename.")
+            return
+
+        sheet_id = current_item.data(Qt.ItemDataRole.UserRole)
+        old_name = current_item.text()
+
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Sheet",
+            "Enter new sheet name:",
+            text=old_name
+        )
+
+        if ok and new_name and new_name != old_name:
+            # Get the sheet from database
+            sheet = self.database.get_spreadsheet(sheet_id)
+            if sheet:
+                # Update the sheet with new name
+                self.database.update_spreadsheet(sheet_id, new_name, sheet['data'])
+
+                # Update current_sheet_name if this is the current sheet
+                if self.current_sheet_id == sheet_id:
+                    self.current_sheet_name = new_name
+
+                # Reload the sheet list
+                self.load_sheets()
+
+                # Reselect the renamed sheet
+                for i in range(self.sheet_list.count()):
+                    item = self.sheet_list.item(i)
+                    if item.data(Qt.ItemDataRole.UserRole) == sheet_id:
+                        self.sheet_list.setCurrentItem(item)
+                        break
+
+                self.sheet_modified.emit()
+
+    def delete_sheet(self):
+        """Delete the selected sheet."""
+        current_item = self.sheet_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "No Selection", "Please select a sheet to delete.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Delete Sheet",
+            "Are you sure you want to delete this sheet?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            sheet_id = current_item.data(Qt.ItemDataRole.UserRole)
+            self.database.delete_spreadsheet(sheet_id)
+            self.load_sheets()
+            self.table.clearContents()
+            self.sheet_modified.emit()
+
+    def save_current_sheet(self):
+        """Save the current sheet."""
+        if self.current_sheet_id and self.is_modified:
+            # Use the stored name instead of the currently selected item
+            data = self.get_sheet_data()
+            self.database.update_spreadsheet(self.current_sheet_id, self.current_sheet_name, data)
+            self.is_modified = False
+            self.sheet_modified.emit()
+
+    def autosave(self):
+        """Autosave the current sheet if modified."""
+        if self.is_modified and self.current_sheet_id:
+            self.save_current_sheet()
+
+    def undo(self):
+        """Undo last change."""
+        if self.undo_stack:
+            current_state = self.get_sheet_data()
+            self.redo_stack.append(current_state)
+            previous_state = self.undo_stack.pop()
+            self.load_sheet_data(previous_state)
+
+    def redo(self):
+        """Redo last undone change."""
+        if self.redo_stack:
+            current_state = self.get_sheet_data()
+            self.undo_stack.append(current_state)
+            next_state = self.redo_stack.pop()
+            self.load_sheet_data(next_state)
+
+    def show_context_menu(self, position):
+        """Show context menu for the sheet list."""
+        menu = QMenu()
+
+        # Add Sheet action (always available)
+        add_action = QAction("New Sheet", self)
+        add_action.triggered.connect(self.add_sheet)
+        menu.addAction(add_action)
+
+        # Actions that require a selection
+        current_item = self.sheet_list.currentItem()
+        if current_item:
+            menu.addSeparator()
+
+            rename_action = QAction("Rename Sheet", self)
+            rename_action.triggered.connect(self.rename_sheet)
+            menu.addAction(rename_action)
+
+            save_action = QAction("Save Sheet", self)
+            save_action.triggered.connect(self.save_current_sheet)
+            menu.addAction(save_action)
+
+            menu.addSeparator()
+
+            delete_action = QAction("Delete Sheet", self)
+            delete_action.triggered.connect(self.delete_sheet)
+            menu.addAction(delete_action)
+
+        menu.exec(self.sheet_list.viewport().mapToGlobal(position))
