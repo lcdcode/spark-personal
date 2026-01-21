@@ -2,6 +2,14 @@
 
 import sys
 from pathlib import Path
+
+# Add parent directory to path if running directly
+# This allows: python3 /path/to/spark/main.py
+if __name__ == "__main__":
+    spark_module_dir = Path(__file__).parent.parent
+    if str(spark_module_dir) not in sys.path:
+        sys.path.insert(0, str(spark_module_dir))
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from spark.config import Config
