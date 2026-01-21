@@ -742,6 +742,170 @@ class NotesWidget(QWidget):
         # Use the common handler
         self.handle_image_insert(file_path)
 
+    def _get_theme_aware_css(self):
+        """Generate CSS that adapts to the current theme."""
+        # Get current theme
+        theme_name = self.config.get('theme', 'Light')
+
+        # Determine if theme is dark
+        is_dark_theme = 'dark' in theme_name.lower() or theme_name.lower() in ['gruvbox', 'monokai']
+
+        # Set colors based on theme
+        if is_dark_theme:
+            bg_color = "#1e1e1e"
+            fg_color = "#d4d4d4"
+            code_inline_bg = "#2d2d2d"
+            code_inline_fg = "#d4d4d4"
+            blockquote_bg = "#2a2a2a"
+            blockquote_fg = "#b0b0b0"
+            blockquote_border = "#4a4a4a"
+            table_header_bg = "#2d2d2d"
+            table_row_bg = "#252525"
+            border_color = "#3e3e3e"
+            link_color = "#4a9eff"
+            h6_color = "#999"
+        else:
+            bg_color = "#ffffff"
+            fg_color = "#000000"
+            code_inline_bg = "#f4f4f4"
+            code_inline_fg = "#000000"
+            blockquote_bg = "#f8f9fa"
+            blockquote_fg = "#555"
+            blockquote_border = "#0066cc"
+            table_header_bg = "#f4f4f4"
+            table_row_bg = "#fafafa"
+            border_color = "#ddd"
+            link_color = "#0066cc"
+            h6_color = "#666"
+
+        return f'''
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                line-height: 1.6;
+                padding: 10px;
+                background-color: {bg_color};
+                color: {fg_color};
+            }}
+            h1, h2, h3, h4, h5, h6 {{
+                margin-top: 1em;
+                margin-bottom: 0.5em;
+                font-weight: 600;
+            }}
+            h1 {{ font-size: 2em; border-bottom: 1px solid {border_color}; padding-bottom: 0.3em; }}
+            h2 {{ font-size: 1.5em; border-bottom: 1px solid {border_color}; padding-bottom: 0.3em; }}
+            h3 {{ font-size: 1.25em; }}
+            h4 {{ font-size: 1em; }}
+            h5 {{ font-size: 0.875em; }}
+            h6 {{ font-size: 0.85em; color: {h6_color}; }}
+            code {{
+                background-color: {code_inline_bg};
+                color: {code_inline_fg};
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-family: "Consolas", "Monaco", "Courier New", monospace;
+                font-size: 0.9em;
+            }}
+            pre {{
+                background-color: #272822;
+                color: #f8f8f2;
+                padding: 12px;
+                border-radius: 6px;
+                overflow-x: auto;
+                font-family: "Consolas", "Monaco", "Courier New", monospace;
+                font-size: 0.9em;
+                line-height: 1.3;
+                margin: 1em 0;
+                white-space: pre;
+            }}
+            pre code {{
+                background-color: transparent;
+                padding: 0;
+                color: inherit;
+            }}
+            pre span {{
+                line-height: 1.3;
+            }}
+            /* Remove any br tags inside pre blocks via display */
+            pre br {{
+                display: none;
+            }}
+            blockquote {{
+                border-left: 4px solid {blockquote_border};
+                margin: 1em 0;
+                padding: 0.5em 1em;
+                background-color: {blockquote_bg};
+                color: {blockquote_fg};
+            }}
+            blockquote blockquote {{
+                border-left-color: {border_color};
+                margin-left: 1.5em;
+                margin-top: 0.5em;
+                margin-bottom: 0.5em;
+                opacity: 0.9;
+            }}
+            blockquote blockquote blockquote {{
+                margin-left: 1.5em;
+                opacity: 0.8;
+            }}
+            table {{
+                border-collapse: collapse;
+                width: 100%;
+                margin: 1em 0;
+            }}
+            th, td {{
+                border: 1px solid {border_color};
+                padding: 8px 12px;
+                text-align: left;
+            }}
+            th {{
+                background-color: {table_header_bg};
+                font-weight: 600;
+            }}
+            tr:nth-child(even) {{
+                background-color: {table_row_bg};
+            }}
+            hr {{
+                border: none;
+                border-top: 1px solid {border_color};
+                margin: 1.5em 0;
+            }}
+            a {{
+                color: {link_color};
+                text-decoration: none;
+            }}
+            a:hover {{
+                text-decoration: underline;
+            }}
+            del {{
+                color: #999;
+                text-decoration: line-through;
+            }}
+            ul, ol {{
+                padding-left: 2em;
+            }}
+            li {{
+                margin: 0.25em 0;
+            }}
+            .codehilite {{
+                background-color: #272822;
+                border-radius: 6px;
+                padding: 12px;
+                margin: 1em 0;
+                overflow-x: auto;
+                line-height: 1.3;
+            }}
+            .codehilite pre {{
+                margin: 0;
+                padding: 0;
+                background-color: transparent;
+            }}
+            .codehilite br {{
+                display: none;
+            }}
+        </style>
+        '''
+
     def update_preview(self):
         """Update the preview pane with rendered Markdown."""
         content = self.editor.toPlainText()
@@ -767,132 +931,8 @@ class NotesWidget(QWidget):
             html_content
         )
 
-        # CSS for proper styling
-        css = '''
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                line-height: 1.6;
-                padding: 10px;
-            }
-            h1, h2, h3, h4, h5, h6 {
-                margin-top: 1em;
-                margin-bottom: 0.5em;
-                font-weight: 600;
-            }
-            h1 { font-size: 2em; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
-            h2 { font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 0.3em; }
-            h3 { font-size: 1.25em; }
-            h4 { font-size: 1em; }
-            h5 { font-size: 0.875em; }
-            h6 { font-size: 0.85em; color: #666; }
-            code {
-                background-color: #f4f4f4;
-                padding: 2px 6px;
-                border-radius: 3px;
-                font-family: "Consolas", "Monaco", "Courier New", monospace;
-                font-size: 0.9em;
-            }
-            pre {
-                background-color: #272822;
-                color: #f8f8f2;
-                padding: 12px;
-                border-radius: 6px;
-                overflow-x: auto;
-                font-family: "Consolas", "Monaco", "Courier New", monospace;
-                font-size: 0.9em;
-                line-height: 1.3;
-                margin: 1em 0;
-                white-space: pre;
-            }
-            pre code {
-                background-color: transparent;
-                padding: 0;
-                color: inherit;
-            }
-            pre span {
-                line-height: 1.3;
-            }
-            /* Remove any br tags inside pre blocks via display */
-            pre br {
-                display: none;
-            }
-            blockquote {
-                border-left: 4px solid #0066cc;
-                margin: 1em 0;
-                padding: 0.5em 1em;
-                background-color: #f8f9fa;
-                color: #555;
-            }
-            blockquote blockquote {
-                border-left-color: #999;
-                margin-left: 1.5em;
-                margin-top: 0.5em;
-                margin-bottom: 0.5em;
-                background-color: #f0f1f3;
-            }
-            blockquote blockquote blockquote {
-                border-left-color: #666;
-                margin-left: 1.5em;
-                background-color: #e8e9eb;
-            }
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin: 1em 0;
-            }
-            th, td {
-                border: 1px solid #ddd;
-                padding: 8px 12px;
-                text-align: left;
-            }
-            th {
-                background-color: #f4f4f4;
-                font-weight: 600;
-            }
-            tr:nth-child(even) {
-                background-color: #fafafa;
-            }
-            hr {
-                border: none;
-                border-top: 1px solid #ddd;
-                margin: 1.5em 0;
-            }
-            a {
-                color: #0066cc;
-                text-decoration: none;
-            }
-            a:hover {
-                text-decoration: underline;
-            }
-            del {
-                color: #999;
-                text-decoration: line-through;
-            }
-            ul, ol {
-                padding-left: 2em;
-            }
-            li {
-                margin: 0.25em 0;
-            }
-            .codehilite {
-                background-color: #272822;
-                border-radius: 6px;
-                padding: 12px;
-                margin: 1em 0;
-                overflow-x: auto;
-                line-height: 1.3;
-            }
-            .codehilite pre {
-                margin: 0;
-                padding: 0;
-                background-color: transparent;
-            }
-            .codehilite br {
-                display: none;
-            }
-        </style>
-        '''
+        # Get theme-aware CSS
+        css = self._get_theme_aware_css()
 
         full_html = f'''
         <!DOCTYPE html>
