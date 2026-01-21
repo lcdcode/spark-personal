@@ -5,8 +5,11 @@ import os
 import re
 import shutil
 import secrets
+import logging
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QPushButton, QTextEdit, QTabWidget, QSplitter, QLineEdit,
@@ -303,28 +306,46 @@ class NotesWidget(QWidget):
 
     def load_notes(self):
         """Load notes into the tree widget."""
-        self.tree.clear()
-        root_notes = self.database.get_root_notes()
-        for note in root_notes:
-            self.add_tree_item(None, note)
+        logger.debug("Loading notes into tree widget")
+        try:
+            self.tree.clear()
+            root_notes = self.database.get_root_notes()
+            logger.debug(f"Found {len(root_notes)} root notes")
+
+            for note in root_notes:
+                try:
+                    self.add_tree_item(None, note)
+                except Exception as e:
+                    logger.error(f"Failed to add tree item for note id={note['id']}: {e}", exc_info=True)
+
+            logger.debug("Notes tree loading complete")
+        except Exception as e:
+            logger.error(f"Failed to load notes: {e}", exc_info=True)
+            raise
 
     def add_tree_item(self, parent_item, note):
         """Add a note to the tree widget."""
-        if parent_item is None:
-            item = QTreeWidgetItem(self.tree)
-        else:
-            item = QTreeWidgetItem(parent_item)
+        try:
+            if parent_item is None:
+                item = QTreeWidgetItem(self.tree)
+            else:
+                item = QTreeWidgetItem(parent_item)
 
-        item.setText(0, note['title'])
-        item.setData(0, Qt.ItemDataRole.UserRole, note['id'])
+            item.setText(0, note['title'])
+            item.setData(0, Qt.ItemDataRole.UserRole, note['id'])
 
-        # Add children
-        children = self.database.get_child_notes(note['id'])
-        for child in children:
-            self.add_tree_item(item, child)
+            # Add children
+            children = self.database.get_child_notes(note['id'])
+            logger.debug(f"Note '{note['title']}' (id={note['id']}) has {len(children)} children")
 
-        item.setExpanded(True)
-        return item
+            for child in children:
+                self.add_tree_item(item, child)
+
+            item.setExpanded(True)
+            return item
+        except Exception as e:
+            logger.error(f"Failed to create tree item for note '{note.get('title', 'unknown')}': {e}", exc_info=True)
+            raise
 
     def toggle_sidebar(self):
         """Toggle sidebar visibility."""
@@ -345,10 +366,21 @@ class NotesWidget(QWidget):
 
     def on_note_selected(self, item, column):
         """Handle note selection."""
+        # Check if item is still valid (Qt can call this with deleted items)
+        if not item:
+            logger.warning("on_note_selected called with None item")
+            return
+
+        try:
+            # Try to access the item - will raise RuntimeError if deleted
+            note_id = item.data(0, Qt.ItemDataRole.UserRole)
+        except RuntimeError as e:
+            logger.warning(f"Attempted to access deleted QTreeWidgetItem: {e}")
+            return
+
         if self.is_modified:
             self.save_current_note()
 
-        note_id = item.data(0, Qt.ItemDataRole.UserRole)
         note = self.database.get_note(note_id)
 
         if note:
@@ -368,25 +400,44 @@ class NotesWidget(QWidget):
 
     def add_note(self):
         """Add a new root note."""
-        title, ok = QInputDialog.getText(self, "New Note", "Enter note title:")
-        if ok and title:
-            note_id = self.database.add_note(title)
-            self.load_notes()
-            self.note_modified.emit()
+        logger.info("User requested to add new root note")
+        try:
+            title, ok = QInputDialog.getText(self, "New Note", "Enter note title:")
+            if ok and title:
+                logger.info(f"Creating new root note with title: '{title}'")
+                note_id = self.database.add_note(title)
+                logger.info(f"Root note created with id={note_id}, reloading notes tree")
+                self.load_notes()
+                self.note_modified.emit()
+                logger.info("Root note creation completed successfully")
+        except Exception as e:
+            logger.error(f"Failed to add root note: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to create note:\n{e}")
 
     def add_child_note(self):
         """Add a child note to the selected note."""
-        current_item = self.tree.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "No Selection", "Please select a parent note first.")
-            return
+        logger.info("User requested to add child note")
+        try:
+            current_item = self.tree.currentItem()
+            if not current_item:
+                logger.warning("No parent note selected for child note")
+                QMessageBox.warning(self, "No Selection", "Please select a parent note first.")
+                return
 
-        parent_id = current_item.data(0, Qt.ItemDataRole.UserRole)
-        title, ok = QInputDialog.getText(self, "New Child Note", "Enter note title:")
-        if ok and title:
-            note_id = self.database.add_note(title, parent_id=parent_id)
-            self.load_notes()
-            self.note_modified.emit()
+            parent_id = current_item.data(0, Qt.ItemDataRole.UserRole)
+            logger.info(f"Creating child note under parent_id={parent_id}")
+
+            title, ok = QInputDialog.getText(self, "New Child Note", "Enter note title:")
+            if ok and title:
+                logger.info(f"Creating child note with title: '{title}'")
+                note_id = self.database.add_note(title, parent_id=parent_id)
+                logger.info(f"Child note created with id={note_id}, reloading notes tree")
+                self.load_notes()
+                self.note_modified.emit()
+                logger.info("Child note creation completed successfully")
+        except Exception as e:
+            logger.error(f"Failed to add child note: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to create child note:\n{e}")
 
     def _extract_image_filenames(self, content: str) -> list:
         """Extract image filenames from markdown content.
@@ -520,17 +571,40 @@ class NotesWidget(QWidget):
     def save_current_note(self):
         """Save the current note."""
         if self.current_note_id and self.is_modified:
-            title = self.title_edit.text()
-            content = self.editor.toPlainText()
-            self.database.update_note(self.current_note_id, title, content)
-            self.is_modified = False
-            self.load_notes()
-            self.note_modified.emit()
+            logger.info(f"Saving note id={self.current_note_id}")
+            try:
+                title = self.title_edit.text()
+                content = self.editor.toPlainText()
+                logger.debug(f"Note title: '{title[:50]}...', content_len={len(content)}")
+
+                # Check if title changed (need to reload tree to update display)
+                note = self.database.get_note(self.current_note_id)
+                title_changed = note and note['title'] != title
+
+                self.database.update_note(self.current_note_id, title, content)
+                self.is_modified = False
+
+                # Only reload tree if title changed (impacts tree display)
+                if title_changed:
+                    logger.info("Note title changed, reloading notes tree")
+                    self.load_notes()
+                else:
+                    logger.debug("Note content saved, skipping tree reload")
+
+                self.note_modified.emit()
+                logger.debug("Save complete")
+            except Exception as e:
+                logger.error(f"Failed to save note id={self.current_note_id}: {e}", exc_info=True)
+                QMessageBox.critical(self, "Error", f"Failed to save note:\n{e}")
 
     def autosave(self):
         """Autosave the current note if modified."""
         if self.is_modified and self.current_note_id:
-            self.save_current_note()
+            logger.debug(f"Autosaving note id={self.current_note_id}")
+            try:
+                self.save_current_note()
+            except Exception as e:
+                logger.error(f"Autosave failed for note id={self.current_note_id}: {e}", exc_info=True)
 
     def mark_modified(self):
         """Mark the current note as modified."""

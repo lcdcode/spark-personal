@@ -2,39 +2,56 @@
 
 import os
 import sqlite3
+import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
     """Manages SQLite database operations."""
 
     def __init__(self, db_path: Path):
+        logger.info(f"Initializing database at: {db_path}")
         self.db_path = db_path
         self.connection: Optional[sqlite3.Connection] = None
-        self.init_database()
+        try:
+            self.init_database()
+            logger.info("Database initialization complete")
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}", exc_info=True)
+            raise
 
     def connect(self):
         """Establish database connection."""
         if not self.connection:
             # Check if database file is new (doesn't exist yet)
             is_new_db = not self.db_path.exists()
+            logger.debug(f"Connecting to database (new={is_new_db})")
 
-            self.connection = sqlite3.connect(str(self.db_path))
-            self.connection.row_factory = sqlite3.Row
+            try:
+                self.connection = sqlite3.connect(str(self.db_path))
+                self.connection.row_factory = sqlite3.Row
+                logger.debug("Database connection established")
 
-            # Set restrictive permissions on new database file
-            if is_new_db:
-                try:
-                    os.chmod(self.db_path, 0o600)
-                except OSError:
-                    pass  # May fail on some systems, not critical
+                # Set restrictive permissions on new database file
+                if is_new_db:
+                    try:
+                        os.chmod(self.db_path, 0o600)
+                        logger.debug("Set database file permissions to 0600")
+                    except OSError as e:
+                        logger.warning(f"Could not set database permissions: {e}")
+            except Exception as e:
+                logger.error(f"Failed to connect to database: {e}", exc_info=True)
+                raise
         return self.connection
 
     def close(self):
         """Close database connection."""
         if self.connection:
+            logger.debug("Closing database connection")
             self.connection.close()
             self.connection = None
 
@@ -90,31 +107,50 @@ class Database:
     # Notes operations
     def add_note(self, title: str, content: str = "", parent_id: Optional[int] = None) -> int:
         """Add a new note."""
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO notes (title, content, parent_id) VALUES (?, ?, ?)',
-            (title, content, parent_id)
-        )
-        conn.commit()
-        return cursor.lastrowid
+        logger.info(f"Adding note: title='{title[:50]}...', parent_id={parent_id}, content_len={len(content)}")
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO notes (title, content, parent_id) VALUES (?, ?, ?)',
+                (title, content, parent_id)
+            )
+            conn.commit()
+            note_id = cursor.lastrowid
+            logger.info(f"Note added successfully with id={note_id}")
+            return note_id
+        except Exception as e:
+            logger.error(f"Failed to add note: {e}", exc_info=True)
+            raise
 
     def update_note(self, note_id: int, title: str, content: str):
         """Update an existing note."""
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE notes SET title = ?, content = ?, modified_at = ? WHERE id = ?',
-            (title, content, datetime.now(), note_id)
-        )
-        conn.commit()
+        logger.info(f"Updating note id={note_id}, title='{title[:50]}...', content_len={len(content)}")
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE notes SET title = ?, content = ?, modified_at = ? WHERE id = ?',
+                (title, content, datetime.now(), note_id)
+            )
+            conn.commit()
+            logger.info(f"Note {note_id} updated successfully")
+        except Exception as e:
+            logger.error(f"Failed to update note {note_id}: {e}", exc_info=True)
+            raise
 
     def delete_note(self, note_id: int):
         """Delete a note and its children."""
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM notes WHERE id = ?', (note_id,))
-        conn.commit()
+        logger.info(f"Deleting note id={note_id}")
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM notes WHERE id = ?', (note_id,))
+            conn.commit()
+            logger.info(f"Note {note_id} deleted successfully")
+        except Exception as e:
+            logger.error(f"Failed to delete note {note_id}: {e}", exc_info=True)
+            raise
 
     def get_note(self, note_id: int) -> Optional[sqlite3.Row]:
         """Get a note by ID."""
