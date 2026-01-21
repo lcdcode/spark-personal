@@ -331,26 +331,35 @@ Access via File → Backup Manager
 4. **Change location**: Click "Change" to select a new backup directory
 5. **Auto-backup**: Configure interval and enable/disable
 
+## AI Assistance
+
+SPARK Personal was developed with assistance from the following tools.
+All code was manually reviewed and tested by the author.
+
+| TOOL             | VERSION    | PURPOSE                                      |
+|------------------|------------|----------------------------------------------|
+| Anthropic Claude | Sonnet 4.5 | Coding assistance, Documentation, Unit Tests |
+| Anthropic Claude | Opus 4.5   | Coding assistance, Documentation             |
+
 ## Project Structure
 
 ```
 spark/
 ├── __init__.py           # Package initialization
-├── main.py              # Application entry point
-├── config.py            # Configuration management
-├── database.py          # SQLite database operations
-├── themes.py            # Theme definitions and stylesheets
-├── main_window.py       # Main application window
-├── notes_widget.py      # Notes functionality
+├── main.py               # Application entry point
+├── config.py             # Configuration management
+├── database.py           # SQLite database operations
+├── themes.py             # Theme definitions and stylesheets
+├── main_window.py        # Main application window
+├── notes_widget.py       # Notes functionality
 ├── spreadsheet_widget.py # Spreadsheet functionality
-├── snippets_widget.py   # Code snippets functionality
-├── backup_manager.py    # Backup management
-└── demo_data.py         # Demo data generation
+├── snippets_widget.py    # Code snippets functionality
+├── backup_manager.py     # Backup management
+└── demo_data.py          # Demo data generation
 
-requirements.txt         # Python dependencies
-setup.py                # Installation configuration
-README.md               # This file
-technical_doc.md        # Technical specification
+requirements.txt          # Python dependencies
+setup.py                  # Installation configuration
+README.md                 # This file
 ```
 
 ## Database Schema
@@ -403,7 +412,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT License - See LICENSE file for details
+GPL 3.0 License - See LICENSE file for details
 
 ## Acknowledgments
 
