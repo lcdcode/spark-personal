@@ -55,3 +55,16 @@ htmlcov/
 # Distribution
 *.tar.gz
 *.whl
+
+# Android Build (auto-generated, system-specific)
+buildozer.spec
+pysidedeploy.spec
+*.apk
+*.aab
+.buildozer/
+deployment/
+android_wheels/
+android_build*.log
+
+# Note: local_recipes/ is NOT ignored - it contains Python 3.11 overrides
+# that should be committed for future Android build attempts

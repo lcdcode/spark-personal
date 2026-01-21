@@ -3,9 +3,10 @@
 (**S**nippet, **P**ersonal **A**rchive, and **R**eference **K**eeper)
 A cross-platform personal knowledgebase and snippet manager for programmers, built with Python and Qt.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![PyQt6](https://img.shields.io/badge/PyQt6-6.6%2B-green)
-![License](https://img.shields.io/badge/License-GPL3-yellow)
+![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
+![PySide6](https://img.shields.io/badge/PySide6-6.10%2B-green)
+![Platform](https://img.shields.io/badge/Platform-Desktop%20%7C%20Android-orange)
+![License](https://img.shields.io/badge/License-GPL3.0-yellow)
 
 ## Features
 
@@ -63,7 +64,7 @@ A cross-platform personal knowledgebase and snippet manager for programmers, bui
 ### For Quick Start, see [QUICKSTART.md](QUICKSTART.md)
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.11 or higher
 - **Linux only**: Qt system libraries (see below)
 
 ### Linux Users: Install System Dependencies First
