@@ -42,6 +42,47 @@ detect_distro() {
 
 DISTRO=$(detect_distro)
 
+# Function to create desktop file for application menu
+create_desktop_file() {
+    local desktop_dir="$HOME/.local/share/applications"
+    local desktop_file="$desktop_dir/spark-personal.desktop"
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local icon_path="$script_dir/spark.png"
+    local exec_path="$script_dir/run.sh"
+
+    # Skip if desktop file already exists and is current
+    if [ -f "$desktop_file" ]; then
+        # Check if paths in existing file match current paths
+        if grep -q "Exec=$exec_path" "$desktop_file" 2>/dev/null && \
+           grep -q "Icon=$icon_path" "$desktop_file" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    # Create applications directory if it doesn't exist
+    mkdir -p "$desktop_dir"
+
+    # Create desktop file
+    cat > "$desktop_file" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SPARK Personal
+Comment=Personal knowledgebase and snippet manager for programmers
+Exec=$exec_path
+Icon=$icon_path
+Terminal=false
+Categories=Office;Development;Utility;
+Keywords=notes;snippets;knowledgebase;markdown;
+StartupNotify=true
+EOF
+
+    chmod +x "$desktop_file"
+
+    echo -e "${GREEN}✓ Desktop file created: $desktop_file${NC}"
+    echo "SPARK Personal will appear in your application menu"
+}
+
 # Function to install system dependencies automatically
 install_system_deps() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -329,6 +370,9 @@ if [ ! -d "$VENV_DIR" ]; then
     echo -e "${GREEN}✓ Setup complete!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo
+
+    # Create desktop file for application menu
+    create_desktop_file
 else
     # Activate existing virtual environment
     if [ ! -f "$VENV_DIR/bin/activate" ]; then
@@ -352,6 +396,9 @@ else
         exit 1
     }
 fi
+
+# Ensure desktop file exists (silently create if needed)
+create_desktop_file
 
 echo "Starting SPARK Personal..."
 
