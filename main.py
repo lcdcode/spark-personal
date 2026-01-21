@@ -35,7 +35,7 @@ def main():
     # Create Qt application
     app = QApplication(sys.argv)
     app.setApplicationName("SPARK Personal")
-    app.setOrganizationName("SPARK")
+    app.setOrganizationName("LCDcode")
 
     # Create and show main window
     window = MainWindow(database, config)
