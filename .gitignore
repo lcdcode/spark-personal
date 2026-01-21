@@ -49,6 +49,9 @@ backups/
 .coverage
 htmlcov/
 
+# Logs
+*.log
+
 # Distribution
 *.tar.gz
 *.whl

@@ -161,25 +161,40 @@ else
     source "$VENV_DIR/bin/activate"
 fi
 
-echo "Starting SPARK Personal..."
+echo "Starting SPARK Personal in background..."
+
+# Set up log file location
+LOG_DIR="$HOME/.spark_personal"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/spark.log"
+
+echo "Output will be logged to: $LOG_FILE"
 echo
 
-# Run with error handling for Qt platform issues
-if python -m spark.main 2>&1; then
-    # SPARK started successfully!
-    # Only now mark dependencies as checked (if on Linux and not already checked)
+# Run SPARK in background with nohup
+nohup python -m spark.main > "$LOG_FILE" 2>&1 &
+SPARK_PID=$!
+
+# Give it a moment to start
+sleep 1
+
+# Check if process is still running
+if ps -p $SPARK_PID > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ SPARK Personal started successfully (PID: $SPARK_PID)${NC}"
+
+    # Mark dependencies as checked on Linux
     if [ "$(uname)" = "Linux" ] && [ ! -f "$SYSTEM_DEPS_CHECKED" ]; then
         touch "$SYSTEM_DEPS_CHECKED"
     fi
-    exit 0
-else
-    EXIT_CODE=$?
 
-    # SPARK failed to start
-    echo
+    echo "You can close this terminal. SPARK will continue running."
+    echo "To view logs: tail -f $LOG_FILE"
+else
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${RED}⚠️  SPARK Personal failed to start${NC}"
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    echo -e "${YELLOW}Check the log file for details: $LOG_FILE${NC}"
     echo
     echo -e "${YELLOW}This is likely due to missing Qt system libraries.${NC}"
     echo
@@ -202,5 +217,5 @@ else
     # Ensure we check dependencies again next time since it failed
     rm -f "$SYSTEM_DEPS_CHECKED"
 
-    exit $EXIT_CODE
+    exit 1
 fi
