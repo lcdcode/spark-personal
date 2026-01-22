@@ -154,17 +154,17 @@ class MainWindow(QMainWindow):
         # Notes widget
         self.notes_widget = NotesWidget(self.database, self.config)
         self.notes_widget.note_modified.connect(self.on_data_modified)
-        self.tabs.addTab(self.notes_widget, "Notes")
+        self.tabs.addTab(self.notes_widget, "📝 Notes")
 
         # Spreadsheets widget
         self.spreadsheet_widget = SpreadsheetWidget(self.database, self.config)
         self.spreadsheet_widget.sheet_modified.connect(self.on_data_modified)
-        self.tabs.addTab(self.spreadsheet_widget, "Spreadsheets")
+        self.tabs.addTab(self.spreadsheet_widget, "📊 Spreadsheets")
 
         # Snippets widget
         self.snippets_widget = SnippetsWidget(self.database, self.config)
         self.snippets_widget.snippet_modified.connect(self.on_data_modified)
-        self.tabs.addTab(self.snippets_widget, "Code Snippets")
+        self.tabs.addTab(self.snippets_widget, "💻 Code Snippets")
 
         # Status bar
         self.status_bar = QStatusBar()
