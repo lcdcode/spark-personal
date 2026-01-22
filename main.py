@@ -14,6 +14,25 @@ if hasattr(sys, 'getandroidapilevel'):
     # Running on Android - add current directory to path
     app_dir = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, app_dir)
+
+    # Debug: Print sys.path and directory contents to logcat
+    print(f"SPARK DEBUG: sys.path = {sys.path}")
+    print(f"SPARK DEBUG: app_dir = {app_dir}")
+    print(f"SPARK DEBUG: Contents of app_dir:")
+    try:
+        for item in os.listdir(app_dir):
+            item_path = os.path.join(app_dir, item)
+            if os.path.isdir(item_path):
+                print(f"  [DIR]  {item}")
+                # List contents of spark directory if it exists
+                if item == 'spark':
+                    print(f"    Contents of spark/:")
+                    for subitem in os.listdir(item_path):
+                        print(f"      {subitem}")
+            else:
+                print(f"  [FILE] {item}")
+    except Exception as e:
+        print(f"SPARK DEBUG: Error listing directory: {e}")
 else:
     # Running on desktop - use standard path setup
     spark_dir = Path(__file__).parent / "spark"

@@ -80,11 +80,23 @@ for i in {1..600}; do
         echo ""
         echo "✓ buildozer.spec found! Adding spark package..."
 
-        # Add spark directory to source.include_exts and source.include_patterns
-        if ! grep -q "source.include_patterns = spark/\*\*" buildozer.spec; then
-            # Find the line with source.include_exts and add our patterns after it
-            sed -i '/^source.include_exts = /a source.include_patterns = spark/**' buildozer.spec
-            echo "✓ Added spark package to buildozer.spec"
+        # Add spark directory to source.include_patterns AND source.dir
+        if ! grep -q "source.include_patterns.*spark" buildozer.spec; then
+            # Method 1: Add include patterns
+            sed -i '/^source.include_exts = /a source.include_patterns = spark/**/*.py,spark/**/*.yaml,spark/**/*.json' buildozer.spec
+
+            # Method 2: Also try modifying source.dir to be explicit
+            # This ensures buildozer treats project_dir as the source root
+            sed -i 's|^#source.dir = .*|source.dir = .|' buildozer.spec
+
+            # Method 3: Explicitly add spark to source.include_dirs if it exists
+            if grep -q "^#source.include_dirs = " buildozer.spec; then
+                sed -i 's|^#source.include_dirs = .*|source.include_dirs = spark|' buildozer.spec
+            else
+                sed -i '/^source.include_exts = /a source.include_dirs = spark' buildozer.spec
+            fi
+
+            echo "✓ Added spark package to buildozer.spec (patterns + dirs)"
             BUILDOZER_PATCHED=true
         fi
     fi
