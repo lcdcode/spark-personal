@@ -108,7 +108,7 @@ class NotesScreen(BoxLayout):
 
         # Create indent based on hierarchy level
         indent = "  " * level
-        tree_symbol = "└─ " if level > 0 else ""
+        tree_symbol = ">> " if level > 0 else ""
 
         # Preview text - shortened for mobile
         preview = note['content'][:35] + "..." if len(note['content']) > 35 else note['content']
@@ -232,12 +232,15 @@ class NotesScreen(BoxLayout):
         content_label = Label(
             text=rendered_text,
             markup=True,
+            size_hint_y=None,
             text_size=(None, None),
             halign='left',
             valign='top',
             padding=(dp(10), dp(10))
         )
-        content_label.bind(size=lambda lbl, size: setattr(lbl, 'text_size', (size[0], None)))
+        # Allow label to expand vertically based on text
+        content_label.bind(texture_size=lambda instance, value: setattr(instance, 'height', value[1]))
+        content_label.bind(size=lambda lbl, size: setattr(lbl, 'text_size', (size[0] - dp(20), None)))
         content_scroll.add_widget(content_label)
         content.add_widget(content_scroll)
 
@@ -258,9 +261,8 @@ class NotesScreen(BoxLayout):
             self.show_note_edit_dialog(note_id)
 
         def delete_note(btn):
-            self.db.delete_note(note_id)
-            self.refresh_notes()
             popup.dismiss()
+            self.show_delete_confirmation(note_id, note['title'])
 
         edit_btn.bind(on_press=edit_note)
         delete_btn.bind(on_press=delete_note)
@@ -483,3 +485,38 @@ class NotesScreen(BoxLayout):
             close_btn.bind(on_press=popup.dismiss)
             content.add_widget(close_btn)
             popup.open()
+
+    def show_delete_confirmation(self, note_id, note_title):
+        """Show confirmation dialog before deleting a note."""
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+
+        message = Label(
+            text=f'Are you sure you want to delete this note?\n\n"{note_title}"\n\nThis action cannot be undone.',
+            size_hint_y=0.7
+        )
+        content.add_widget(message)
+
+        btn_layout = BoxLayout(size_hint_y=0.3, spacing=dp(10))
+
+        delete_btn = Button(text='Delete', background_color=(0.8, 0.2, 0.2, 1))
+        cancel_btn = Button(text='Cancel')
+
+        popup = Popup(
+            title='Confirm Delete',
+            content=content,
+            size_hint=(0.8, 0.4)
+        )
+
+        def confirm_delete(btn):
+            self.db.delete_note(note_id)
+            self.refresh_notes()
+            popup.dismiss()
+
+        delete_btn.bind(on_press=confirm_delete)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        btn_layout.add_widget(cancel_btn)
+        btn_layout.add_widget(delete_btn)
+        content.add_widget(btn_layout)
+
+        popup.open()

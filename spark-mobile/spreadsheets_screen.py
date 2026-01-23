@@ -9,10 +9,12 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.metrics import dp
 import json
+import re
+from datetime import datetime
 
 
 class SpreadsheetsScreen(BoxLayout):
-    """Spreadsheets list and simple viewer screen."""
+    """Spreadsheets list and grid viewer screen with formula support."""
 
     def __init__(self, db, **kwargs):
         super().__init__(**kwargs)
@@ -100,7 +102,7 @@ class SpreadsheetsScreen(BoxLayout):
         content.add_widget(name_input)
 
         info_label = Label(
-            text='A basic spreadsheet will be created.\nYou can add data after creation.',
+            text='A basic 5x5 spreadsheet will be created.',
             size_hint_y=0.6,
             color=(0.7, 0.7, 0.7, 1)
         )
@@ -119,8 +121,8 @@ class SpreadsheetsScreen(BoxLayout):
 
         def save_sheet(btn):
             if name_input.text.strip():
-                # Create with empty data structure
-                initial_data = json.dumps({"A1": ""})
+                # Create with empty 5x5 grid
+                initial_data = json.dumps({})
                 self.db.add_spreadsheet(name_input.text.strip(), initial_data)
                 self.refresh_sheets()
                 popup.dismiss()
@@ -134,51 +136,369 @@ class SpreadsheetsScreen(BoxLayout):
 
         popup.open()
 
+    def parse_cell_reference(self, ref):
+        """Parse cell reference like 'A1' into (0, 0) coordinates."""
+        match = re.match(r'([A-Z]+)(\d+)', ref.upper())
+        if match:
+            col_letters, row_num = match.groups()
+            # Convert column letters to number (A=0, B=1, ..., Z=25, AA=26, etc.)
+            col = 0
+            for char in col_letters:
+                col = col * 26 + (ord(char) - ord('A') + 1)
+            col -= 1  # Make zero-indexed
+            row = int(row_num) - 1  # Make zero-indexed
+            return (row, col)
+        return None
+
+    def evaluate_formula(self, formula, data):
+        """Evaluate a formula with full function support."""
+        if not formula.startswith('='):
+            return formula
+
+        # Remove the = sign
+        expr = formula[1:].strip()
+
+        try:
+            # Process functions first
+            expr = self.process_functions(expr, data)
+
+            # Replace cell references with their values
+            expr = self.replace_cell_references(expr, data)
+
+            # Check if result is a quoted string (from DATE function, etc.)
+            if expr.startswith('"') and expr.endswith('"'):
+                return expr[1:-1]
+
+            # Normalize = to == for comparisons (for IF function)
+            expr = self.normalize_equality(expr)
+
+            # Evaluate the expression
+            allowed_chars = set('0123456789+-*/().()<>=!& ')
+            if all(c in allowed_chars or c.isspace() for c in expr.replace('==', '').replace('!=', '').replace('<=', '').replace('>=', '')):
+                result = eval(expr)
+                if isinstance(result, bool):
+                    return str(result)
+                elif isinstance(result, (int, float)):
+                    return str(round(result, 2))
+                else:
+                    return str(result)
+            else:
+                return '#ERROR'
+        except Exception as e:
+            return '#ERROR'
+
+    def normalize_equality(self, expr):
+        """Convert single = to == for equality comparisons."""
+        # Replace = with == only when it's not already ==, !=, <=, or >=
+        result = []
+        i = 0
+        while i < len(expr):
+            if expr[i] == '=':
+                # Check if already part of ==, !=, <=, >=
+                if i > 0 and expr[i-1] in '!<>':
+                    result.append('=')
+                elif i + 1 < len(expr) and expr[i+1] == '=':
+                    result.append('==')
+                    i += 1
+                else:
+                    # Convert single = to ==
+                    result.append('==')
+            else:
+                result.append(expr[i])
+            i += 1
+        return ''.join(result)
+
+    def replace_cell_references(self, expr, data):
+        """Replace cell references with their values."""
+        cell_pattern = r'([A-Z]+\d+)'
+
+        def replace_cell(match):
+            cell_ref = match.group(1)
+            value = data.get(cell_ref, '0')
+
+            # If the referenced cell has a formula, evaluate it recursively
+            if isinstance(value, str) and value.startswith('='):
+                value = self.evaluate_formula(value, data)
+
+            # Try to parse date string to numeric timestamp
+            if isinstance(value, str) and re.match(r'\d{4}-\d{2}-\d{2}', value):
+                try:
+                    dt = datetime.strptime(value, '%Y-%m-%d')
+                    # Convert to days since epoch
+                    return str(dt.timestamp() / 86400)
+                except:
+                    pass
+
+            # Return numeric value or 0
+            try:
+                return str(float(value)) if value else '0'
+            except:
+                return '0'
+
+        return re.sub(cell_pattern, replace_cell, expr)
+
+    def process_functions(self, expr, data):
+        """Process spreadsheet functions."""
+        # TODAY() - returns numeric timestamp (days since epoch)
+        today_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() / 86400
+        expr = re.sub(r'TODAY\(\)', str(today_timestamp), expr, flags=re.IGNORECASE)
+
+        # NOW() - returns numeric timestamp with time
+        now_timestamp = datetime.now().timestamp() / 86400
+        expr = re.sub(r'NOW\(\)', str(now_timestamp), expr, flags=re.IGNORECASE)
+
+        # SUM function
+        expr = re.sub(
+            r'SUM\(([^)]+)\)',
+            lambda m: str(self.func_sum(m.group(1), data)),
+            expr,
+            flags=re.IGNORECASE
+        )
+
+        # AVERAGE function
+        expr = re.sub(
+            r'AVERAGE\(([^)]+)\)',
+            lambda m: str(self.func_average(m.group(1), data)),
+            expr,
+            flags=re.IGNORECASE
+        )
+
+        # IF function - more complex, needs careful parsing
+        expr = self.process_if_function(expr, data)
+
+        # DATE function - converts numeric timestamp to date string
+        expr = re.sub(
+            r'DATE\(([^)]+)\)',
+            lambda m: self.func_date(m.group(1), data),
+            expr,
+            flags=re.IGNORECASE
+        )
+
+        return expr
+
+    def func_sum(self, args, data):
+        """SUM function implementation."""
+        values = self.parse_function_args(args, data)
+        return sum(values)
+
+    def func_average(self, args, data):
+        """AVERAGE function implementation."""
+        values = self.parse_function_args(args, data)
+        return sum(values) / len(values) if values else 0
+
+    def func_date(self, args, data):
+        """DATE function - converts numeric timestamp to date string."""
+        args = args.strip()
+        # Replace cell references
+        args = self.replace_cell_references(args, data)
+
+        try:
+            timestamp = float(eval(args))
+            dt = datetime.fromtimestamp(timestamp * 86400)
+            return f'"{dt.strftime("%Y-%m-%d")}"'
+        except:
+            return '"#ERROR"'
+
+    def process_if_function(self, expr, data):
+        """Process IF function with proper nested function support."""
+        pattern = r'IF\(([^,]+),([^,]+),([^)]+)\)'
+
+        def replace_if(match):
+            condition = match.group(1).strip()
+            true_val = match.group(2).strip()
+            false_val = match.group(3).strip()
+
+            # Replace cell references in condition
+            condition = self.replace_cell_references(condition, data)
+            condition = self.normalize_equality(condition)
+
+            try:
+                if eval(condition):
+                    return true_val
+                else:
+                    return false_val
+            except:
+                return '"#ERROR"'
+
+        return re.sub(pattern, replace_if, expr, flags=re.IGNORECASE)
+
+    def parse_function_args(self, args, data):
+        """Parse function arguments and return numeric values."""
+        values = []
+        parts = args.split(',')
+
+        for part in parts:
+            part = part.strip()
+
+            # Check if it's a range like A1:A5
+            if ':' in part:
+                values.extend(self.parse_range(part, data))
+            else:
+                # Replace cell reference or evaluate expression
+                part = self.replace_cell_references(part, data)
+                try:
+                    values.append(float(eval(part)))
+                except:
+                    pass
+
+        return values
+
+    def parse_range(self, range_str, data):
+        """Parse cell range like A1:A5 and return values."""
+        try:
+            start, end = range_str.split(':')
+            start_coords = self.parse_cell_reference(start.strip())
+            end_coords = self.parse_cell_reference(end.strip())
+
+            if not start_coords or not end_coords:
+                return []
+
+            values = []
+            start_row, start_col = start_coords
+            end_row, end_col = end_coords
+
+            for row in range(start_row, end_row + 1):
+                for col in range(start_col, end_col + 1):
+                    cell_ref = f"{self.col_to_letter(col)}{row + 1}"
+                    value = data.get(cell_ref, '0')
+                    if isinstance(value, str) and value.startswith('='):
+                        value = self.evaluate_formula(value, data)
+                    try:
+                        values.append(float(value))
+                    except:
+                        pass
+
+            return values
+        except:
+            return []
+
     def show_sheet_viewer(self, sheet_id):
-        """Show viewer for a spreadsheet."""
+        """Show grid viewer for a spreadsheet with formula support."""
         sheet = self.db.get_spreadsheet(sheet_id)
         if not sheet:
             return
 
-        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
+        content = BoxLayout(orientation='vertical', spacing=dp(5), padding=dp(5))
 
-        # Parse and display data
+        # Parse data
         try:
-            data = json.loads(sheet['data']) if sheet['data'] else {}
-        except:
+            raw_data = json.loads(sheet['data']) if sheet['data'] else {}
+
+            # Handle both old format (flat dict) and new format (with 'cells' key)
+            if isinstance(raw_data, dict):
+                if 'cells' in raw_data:
+                    # New desktop format: {"cells": {...}, "column_widths": {...}, ...}
+                    data = raw_data['cells']
+                    print(f"SPARK: Loaded spreadsheet (desktop format) with {len(data)} cells")
+                else:
+                    # Old mobile format: {"A1": "value", ...}
+                    data = raw_data
+                    print(f"SPARK: Loaded spreadsheet (mobile format) with {len(data)} cells")
+            else:
+                data = {}
+                print(f"SPARK: WARNING - unexpected data format: {type(raw_data)}")
+
+            print(f"SPARK: Data keys: {list(data.keys())[:10]}")
+            if len(data) > 0:
+                # Print first few cells for debugging
+                for i, (k, v) in enumerate(list(data.items())[:5]):
+                    print(f"SPARK: Cell {k} = {v}")
+        except Exception as e:
+            print(f"SPARK: ERROR parsing spreadsheet data: {e}")
+            print(f"SPARK: Raw data from DB: {sheet['data'][:200] if sheet['data'] else 'None'}")
             data = {}
 
-        # Create a simple grid view of cells
-        scroll = ScrollView(size_hint_y=0.7)
-        cells_grid = GridLayout(
-            cols=1,
-            spacing=dp(5),
-            size_hint_y=None,
-            padding=dp(5)
+        # Determine grid size from existing data
+        max_row, max_col = 4, 4  # Default 5x5 (0-indexed)
+        for cell_ref in data.keys():
+            coords = self.parse_cell_reference(cell_ref)
+            if coords:
+                row, col = coords
+                max_row = max(max_row, row)
+                max_col = max(max_col, col)
+
+        # Add a bit of extra space
+        max_row = min(max_row + 2, 20)  # Limit to 20 rows
+        max_col = min(max_col + 2, 10)  # Limit to 10 columns
+
+        # Create scrollable grid
+        scroll = ScrollView(size_hint_y=0.75, do_scroll_x=True, do_scroll_y=True)
+
+        grid = GridLayout(
+            cols=max_col + 2,  # +1 for row headers, +1 for extra column
+            spacing=dp(1),
+            size_hint=(None, None),
+            padding=dp(2)
         )
-        cells_grid.bind(minimum_height=cells_grid.setter('height'))
 
-        if data:
-            for cell, value in sorted(data.items()):
-                cell_layout = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(10))
-                cell_layout.add_widget(Label(text=cell, size_hint_x=0.3, color=(0.5, 0.8, 1, 1)))
-                cell_layout.add_widget(Label(text=str(value), size_hint_x=0.7, halign='left'))
-                cells_grid.add_widget(cell_layout)
-        else:
-            cells_grid.add_widget(Label(
-                text='No data in this spreadsheet',
-                size_hint_y=None,
-                height=dp(50),
-                color=(0.5, 0.5, 0.5, 1)
-            ))
+        # Calculate grid size
+        cell_width = dp(80)
+        cell_height = dp(40)
+        grid.width = (max_col + 2) * cell_width
+        grid.height = (max_row + 2) * cell_height
 
-        scroll.add_widget(cells_grid)
+        # Header row (column labels)
+        grid.add_widget(Label(text='', size_hint=(None, None), size=(cell_width, cell_height)))
+        for col in range(max_col + 1):
+            col_label = self.col_to_letter(col)
+            header = Label(
+                text=col_label,
+                size_hint=(None, None),
+                size=(cell_width, cell_height),
+                bold=True,
+                color=(0.7, 0.9, 1, 1)
+            )
+            grid.add_widget(header)
+
+        # Data rows
+        for row in range(max_row + 1):
+            # Row header
+            row_header = Label(
+                text=str(row + 1),
+                size_hint=(None, None),
+                size=(cell_width, cell_height),
+                bold=True,
+                color=(0.7, 0.9, 1, 1)
+            )
+            grid.add_widget(row_header)
+
+            # Data cells
+            for col in range(max_col + 1):
+                cell_ref = f"{self.col_to_letter(col)}{row + 1}"
+                cell_value = data.get(cell_ref, '')
+
+                # Evaluate formula if present
+                display_value = cell_value
+                if isinstance(cell_value, str) and cell_value.startswith('='):
+                    try:
+                        display_value = self.evaluate_formula(cell_value, data)
+                        print(f"SPARK: {cell_ref}={cell_value} -> {display_value}")
+                    except Exception as e:
+                        print(f"SPARK: Error evaluating {cell_ref}: {e}")
+                        display_value = '#ERROR'
+
+                # Ensure display_value is a string
+                if display_value is None:
+                    display_value = ''
+                else:
+                    display_value = str(display_value)
+
+                cell_label = Label(
+                    text=display_value,
+                    size_hint=(None, None),
+                    size=(cell_width, cell_height),
+                    color=(1, 1, 1, 1) if display_value else (0.5, 0.5, 0.5, 1),
+                    padding=(dp(5), dp(5))
+                )
+                grid.add_widget(cell_label)
+
+        scroll.add_widget(grid)
         content.add_widget(scroll)
 
         # Info label
         info_label = Label(
-            text='Note: Full spreadsheet editing is available in the desktop app.',
-            size_hint_y=0.2,
+            text='Formulas are evaluated (e.g., =A1+B1)\nView only - Edit on desktop',
+            size_hint_y=0.15,
             color=(0.7, 0.7, 0.7, 1)
         )
         content.add_widget(info_label)
@@ -192,19 +512,63 @@ class SpreadsheetsScreen(BoxLayout):
         popup = Popup(
             title=sheet['name'],
             content=content,
-            size_hint=(0.9, 0.8)
+            size_hint=(0.95, 0.9)
         )
 
         def delete_sheet(btn):
-            self.db.delete_spreadsheet(sheet_id)
-            self.refresh_sheets()
             popup.dismiss()
+            self.show_delete_confirmation(sheet_id, sheet['name'])
 
         delete_btn.bind(on_press=delete_sheet)
         close_btn.bind(on_press=popup.dismiss)
 
         btn_layout.add_widget(delete_btn)
         btn_layout.add_widget(close_btn)
+        content.add_widget(btn_layout)
+
+        popup.open()
+
+    def col_to_letter(self, col):
+        """Convert column number to letter(s) (0='A', 25='Z', 26='AA', etc.)."""
+        result = ''
+        col += 1  # Make 1-indexed
+        while col > 0:
+            col -= 1
+            result = chr(col % 26 + ord('A')) + result
+            col //= 26
+        return result
+
+    def show_delete_confirmation(self, sheet_id, sheet_name):
+        """Show confirmation dialog before deleting a spreadsheet."""
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+
+        message = Label(
+            text=f'Are you sure you want to delete this spreadsheet?\n\n"{sheet_name}"\n\nThis action cannot be undone.',
+            size_hint_y=0.7
+        )
+        content.add_widget(message)
+
+        btn_layout = BoxLayout(size_hint_y=0.3, spacing=dp(10))
+
+        delete_btn = Button(text='Delete', background_color=(0.8, 0.2, 0.2, 1))
+        cancel_btn = Button(text='Cancel')
+
+        popup = Popup(
+            title='Confirm Delete',
+            content=content,
+            size_hint=(0.8, 0.4)
+        )
+
+        def confirm_delete(btn):
+            self.db.delete_spreadsheet(sheet_id)
+            self.refresh_sheets()
+            popup.dismiss()
+
+        delete_btn.bind(on_press=confirm_delete)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        btn_layout.add_widget(cancel_btn)
+        btn_layout.add_widget(delete_btn)
         content.add_widget(btn_layout)
 
         popup.open()

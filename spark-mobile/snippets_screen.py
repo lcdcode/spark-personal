@@ -78,12 +78,15 @@ class SnippetsScreen(BoxLayout):
             self.snippets_list.add_widget(label)
             return
 
-        for snippet in snippets:
-            lang_badge = f"[{snippet['language']}]" if snippet['language'] else ""
-            code_preview = snippet['code'][:60] + "..." if len(snippet['code']) > 60 else snippet['code']
+        # Sort snippets alphabetically by language first, then by title
+        sorted_snippets = sorted(snippets, key=lambda s: (s['language'] or 'zzz', s['title'].lower()))
+
+        for snippet in sorted_snippets:
+            lang = snippet['language'] or "No Language"
+            code_preview = snippet['code'][:50] + "..." if len(snippet['code']) > 50 else snippet['code']
 
             snippet_btn = Button(
-                text=f"{snippet['title']} {lang_badge}\n{code_preview}",
+                text=f"[{lang}] {snippet['title']}\n{code_preview}",
                 size_hint_y=None,
                 height=dp(80),
                 halign='left',
@@ -227,9 +230,8 @@ class SnippetsScreen(BoxLayout):
                 popup.dismiss()
 
         def delete_snippet(btn):
-            self.db.delete_snippet(snippet_id)
-            self.refresh_snippets()
             popup.dismiss()
+            self.show_delete_confirmation(snippet_id, snippet['title'])
 
         save_btn.bind(on_press=save_snippet)
         delete_btn.bind(on_press=delete_snippet)
@@ -238,6 +240,41 @@ class SnippetsScreen(BoxLayout):
         btn_layout.add_widget(save_btn)
         btn_layout.add_widget(delete_btn)
         btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup.open()
+
+    def show_delete_confirmation(self, snippet_id, snippet_title):
+        """Show confirmation dialog before deleting a snippet."""
+        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
+
+        message = Label(
+            text=f'Are you sure you want to delete this snippet?\n\n"{snippet_title}"\n\nThis action cannot be undone.',
+            size_hint_y=0.7
+        )
+        content.add_widget(message)
+
+        btn_layout = BoxLayout(size_hint_y=0.3, spacing=dp(10))
+
+        delete_btn = Button(text='Delete', background_color=(0.8, 0.2, 0.2, 1))
+        cancel_btn = Button(text='Cancel')
+
+        popup = Popup(
+            title='Confirm Delete',
+            content=content,
+            size_hint=(0.8, 0.4)
+        )
+
+        def confirm_delete(btn):
+            self.db.delete_snippet(snippet_id)
+            self.refresh_snippets()
+            popup.dismiss()
+
+        delete_btn.bind(on_press=confirm_delete)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        btn_layout.add_widget(cancel_btn)
+        btn_layout.add_widget(delete_btn)
         content.add_widget(btn_layout)
 
         popup.open()
