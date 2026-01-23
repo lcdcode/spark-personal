@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QVBoxLayout, QWidget, QMessageBox, QDialog,
     QLabel, QComboBox, QPushButton, QHBoxLayout, QApplication
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QFileSystemWatcher
 from PyQt6.QtGui import QAction, QKeySequence, QIcon
 from pathlib import Path
 from spark.notes_widget import NotesWidget
@@ -126,6 +126,13 @@ class MainWindow(QMainWindow):
         # Setup backup manager
         self.backup_manager = BackupManager(config, config.get_database_path())
         self.auto_backup_timer = AutoBackupTimer(self.backup_manager, config)
+
+        # Setup database file monitoring for external changes (Syncthing sync)
+        self.db_path = str(config.get_database_path())
+        self.db_watcher = QFileSystemWatcher()
+        self.db_watcher.addPath(self.db_path)
+        self.db_watcher.fileChanged.connect(self.on_database_changed)
+        self.db_reload_pending = False
 
         self.init_ui()
         self.create_menus()
@@ -383,6 +390,70 @@ class MainWindow(QMainWindow):
                 self.show_notification("Recalculate function not available")
         else:
             self.show_notification("Recalculate only works in Spreadsheets tab")
+
+    def on_database_changed(self, path):
+        """Handle database file change detected by file watcher."""
+        # Avoid multiple prompts for the same change
+        if self.db_reload_pending:
+            return
+
+        self.db_reload_pending = True
+
+        # Show reload prompt
+        reply = QMessageBox.question(
+            self,
+            'Database Changed',
+            'The database file has been modified externally (possibly by Syncthing).\n\n'
+            'Would you like to reload the database to see the changes?\n\n'
+            'Note: Any unsaved changes in the current session will be saved first.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.reload_database()
+
+        self.db_reload_pending = False
+
+        # Re-add the path to the watcher (sometimes it gets removed after change)
+        if not self.db_watcher.files():
+            self.db_watcher.addPath(self.db_path)
+
+    def reload_database(self):
+        """Reload database and refresh all widgets."""
+        try:
+            # Save any pending changes first
+            if hasattr(self.notes_widget, 'is_modified') and self.notes_widget.is_modified:
+                self.notes_widget.save_current_note()
+
+            if hasattr(self.spreadsheet_widget, 'is_modified') and self.spreadsheet_widget.is_modified:
+                self.spreadsheet_widget.save_current_sheet()
+
+            if hasattr(self.snippets_widget, 'is_modified') and self.snippets_widget.is_modified:
+                self.snippets_widget.save_current_snippet()
+
+            # Close and reconnect database
+            self.database.close()
+            self.database.connect()
+
+            # Refresh all widgets by reloading their data
+            if hasattr(self.notes_widget, 'load_notes'):
+                self.notes_widget.load_notes()
+
+            if hasattr(self.spreadsheet_widget, 'load_sheets'):
+                self.spreadsheet_widget.load_sheets()
+
+            if hasattr(self.snippets_widget, 'load_snippets'):
+                self.snippets_widget.load_snippets()
+
+            self.show_notification("Database reloaded successfully", 5000)
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                'Reload Error',
+                f'Failed to reload database: {str(e)}'
+            )
 
     def show_notification(self, message: str, timeout: int = 3000):
         """Show notification in status bar."""
