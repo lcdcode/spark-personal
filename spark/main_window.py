@@ -108,7 +108,7 @@ class MainWindow(QMainWindow):
         self.database = database
         self.config = config
 
-        self.setWindowTitle("SPARK Personal - Knowledgebase & Snippet Manager")
+        self.setWindowTitle("SPARK Personal - Snippet, Personal Archive, and Reference Keeper")
 
         # Set window icon
         icon_path = Path(__file__).parent.parent / "spark.png"
