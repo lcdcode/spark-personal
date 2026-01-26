@@ -1,5 +1,6 @@
 """Main window for SPARK Personal."""
 
+import logging
 from PyQt6.QtWidgets import (
     QMainWindow, QTabWidget, QMenuBar, QMenu, QStatusBar,
     QLineEdit, QVBoxLayout, QWidget, QMessageBox, QDialog,
@@ -13,6 +14,8 @@ from spark.spreadsheet_widget import SpreadsheetWidget
 from spark.snippets_widget import SnippetsWidget
 from spark.backup_manager import BackupManager, BackupDialog, AutoBackupTimer
 from spark.themes import get_stylesheet, THEMES
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsDialog(QDialog):
