@@ -1,5 +1,7 @@
 # SPARK Personal 
 
+![SPARK Logo](spark.png)
+
 (**S**nippet, **P**ersonal **A**rchive, and **R**eference **K**eeper)
 A cross-platform personal knowledgebase and snippet manager for programmers, built with Python and Qt.
 

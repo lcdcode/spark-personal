@@ -294,7 +294,8 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About SPARK Personal",
-            "SPARK Personal v1.0.0\n\n"
+            "SPARK Personal v1.0.0\n"
+            "Snippet, Personal Archive, and Reference Keeper\n\n"
             "Personal knowledgebase and snippet manager for programmers.\n\n"
             "Features:\n"
             "- Hierarchical notes with Markdown support\n"
@@ -302,7 +303,7 @@ class MainWindow(QMainWindow):
             "- Code snippets with syntax highlighting\n"
             "- Automatic backups\n"
             "- Multiple themes\n\n"
-            "Built with Python and PyQt6"
+            "https://github.com/lcdcode/spark-personal"
         )
 
     def change_theme(self, theme_name: str):
