@@ -13,16 +13,22 @@ logger = logging.getLogger(__name__)
 class Database:
     """Manages SQLite database operations."""
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, on_save_callback=None):
         logger.info(f"Initializing database at: {db_path}")
         self.db_path = db_path
         self.connection: Optional[sqlite3.Connection] = None
+        self.on_save_callback = on_save_callback  # Callback to notify before saving
         try:
             self.init_database()
             logger.info("Database initialization complete")
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}", exc_info=True)
             raise
+
+    def _before_commit(self):
+        """Call this before any commit to notify the app of self-initiated changes."""
+        if self.on_save_callback:
+            self.on_save_callback()
 
     def connect(self):
         """Establish database connection."""
@@ -115,6 +121,7 @@ class Database:
                 'INSERT INTO notes (title, content, parent_id) VALUES (?, ?, ?)',
                 (title, content, parent_id)
             )
+            self._before_commit()
             conn.commit()
             note_id = cursor.lastrowid
             logger.info(f"Note added successfully with id={note_id}")
@@ -133,6 +140,7 @@ class Database:
                 'UPDATE notes SET title = ?, content = ?, modified_at = ? WHERE id = ?',
                 (title, content, datetime.now(), note_id)
             )
+            self._before_commit()
             conn.commit()
             logger.info(f"Note {note_id} updated successfully")
         except Exception as e:
@@ -146,6 +154,7 @@ class Database:
             conn = self.connect()
             cursor = conn.cursor()
             cursor.execute('DELETE FROM notes WHERE id = ?', (note_id,))
+            self._before_commit()
             conn.commit()
             logger.info(f"Note {note_id} deleted successfully")
         except Exception as e:
@@ -200,6 +209,7 @@ class Database:
             'INSERT INTO spreadsheets (name, data) VALUES (?, ?)',
             (name, data)
         )
+        self._before_commit()
         conn.commit()
         return cursor.lastrowid
 
@@ -211,6 +221,7 @@ class Database:
             'UPDATE spreadsheets SET name = ?, data = ?, modified_at = ? WHERE id = ?',
             (name, data, datetime.now(), sheet_id)
         )
+        self._before_commit()
         conn.commit()
 
     def delete_spreadsheet(self, sheet_id: int):
@@ -218,6 +229,7 @@ class Database:
         conn = self.connect()
         cursor = conn.cursor()
         cursor.execute('DELETE FROM spreadsheets WHERE id = ?', (sheet_id,))
+        self._before_commit()
         conn.commit()
 
     def get_spreadsheet(self, sheet_id: int) -> Optional[sqlite3.Row]:
@@ -243,6 +255,7 @@ class Database:
             'INSERT INTO snippets (title, code, language, tags) VALUES (?, ?, ?, ?)',
             (title, code, language, tags)
         )
+        self._before_commit()
         conn.commit()
         return cursor.lastrowid
 
@@ -254,6 +267,7 @@ class Database:
             'UPDATE snippets SET title = ?, code = ?, language = ?, tags = ?, modified_at = ? WHERE id = ?',
             (title, code, language, tags, datetime.now(), snippet_id)
         )
+        self._before_commit()
         conn.commit()
 
     def delete_snippet(self, snippet_id: int):
@@ -261,6 +275,7 @@ class Database:
         conn = self.connect()
         cursor = conn.cursor()
         cursor.execute('DELETE FROM snippets WHERE id = ?', (snippet_id,))
+        self._before_commit()
         conn.commit()
 
     def get_snippet(self, snippet_id: int) -> Optional[sqlite3.Row]:

@@ -1,0 +1,11 @@
+--- a/kivy/weakproxy.pyx
++++ b/kivy/weakproxy.pyx
+@@ -255,7 +255,7 @@ cdef class WeakProxy:
+         return int(self.__ref__())
+
+     def __long__(self):
+-        return long(self.__ref__())
++        return int(self.__ref__())
+
+     def __float__(self):
+         return float(self.__ref__())

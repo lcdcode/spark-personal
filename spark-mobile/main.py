@@ -66,6 +66,7 @@ class SparkMobile(App):
         self.db_path = None
         self.db_last_modified = None
         self.check_interval = 5  # Check every 5 seconds
+        self.ignore_next_change = False  # Flag to ignore self-initiated changes
 
     def build(self):
         """Build the UI."""
@@ -82,7 +83,7 @@ class SparkMobile(App):
         # Initialize database
         self.db_path = self.get_db_path()
         print(f"Database path: {self.db_path}")
-        self.db = Database(self.db_path)
+        self.db = Database(self.db_path, on_save_callback=self.on_database_save)
         self.update_db_timestamp()
 
         # Create main layout with dark theme
@@ -233,6 +234,11 @@ class SparkMobile(App):
             except Exception as e:
                 print(f"SPARK: Error requesting permissions: {e}")
 
+    def on_database_save(self):
+        """Called by Database before committing changes."""
+        print("SPARK: Database save detected - setting ignore flag")
+        self.ignore_next_change = True
+
     def update_db_timestamp(self):
         """Update the stored database modification timestamp."""
         import os
@@ -250,6 +256,13 @@ class SparkMobile(App):
                 return
 
             current_mtime = os.path.getmtime(self.db_path)
+
+            # Check if change should be ignored (self-initiated save)
+            if self.ignore_next_change:
+                print(f"SPARK: Ignoring db change (self-initiated save)")
+                self.db_last_modified = current_mtime
+                self.ignore_next_change = False
+                return
 
             if self.db_last_modified and current_mtime > self.db_last_modified:
                 print(f"SPARK: Database changed externally! {self.db_last_modified} -> {current_mtime}")
@@ -312,7 +325,7 @@ class SparkMobile(App):
             if self.db:
                 self.db.close()
 
-            self.db = Database(self.db_path)
+            self.db = Database(self.db_path, on_save_callback=self.on_database_save)
             self.update_db_timestamp()
 
             # Refresh all screens

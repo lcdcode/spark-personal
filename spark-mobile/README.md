@@ -1,5 +1,7 @@
 # SPARK Mobile
 
+## NOTE: UPON FIRST INSTALLATION BEFORE LAUNCHING, Create the folder Documents/SPARK/ and give SPARK Mobile a storage scope to it!
+
 Mobile-first version of SPARK Personal for Android and iOS.
 
 ## Features

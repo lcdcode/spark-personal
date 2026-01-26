@@ -1,0 +1,42 @@
+--- a/kivy/weakproxy.pyx
++++ b/kivy/weakproxy.pyx
+@@ -255,7 +255,7 @@ cdef class WeakProxy:
+         return int(self.__ref__())
+
+     def __long__(self):
+-        return long(self.__ref__())
++        return int(self.__ref__())
+
+     def __float__(self):
+         return float(self.__ref__())
+--- a/kivy/graphics/opengl.pyx
++++ b/kivy/graphics/opengl.pyx
+@@ -689,7 +689,7 @@ cdef inline void _gl_draw_elements(GLenum mode, indices, int indices_type, Buff
+     cdef void *indices_ptr = NULL
+
+     # if indices is an integer, use it directly as a pointer
+-    elif isinstance(indices, (long, int)):
++    elif isinstance(indices, int):
+         indices_ptr = <void *>(<long>indices)
+         glDrawElements(mode, count, indices_type, indices_ptr)
+         return
+@@ -1539,7 +1539,7 @@ cdef inline void _gl_buffer_data(GLenum target, data, GLenum usage):
+     cdef GLsizeiptr data_size = 0
+
+     # If data is an integer, treat it as size (allocate buffer without data)
+-    elif isinstance(data, (long, int)):
++    elif isinstance(data, int):
+         data_size = data
+         glBufferData(target, data_size, NULL, usage)
+         return
+--- a/kivy/graphics/context_instructions.pyx
++++ b/kivy/graphics/context_instructions.pyx
+@@ -1038,7 +1038,7 @@ cdef class Color(ContextInstruction):
+         cdef float r, g, b
+         h = h % 1.
+         s = min(1., max(0., s))
+-        cdef long i = long(h * 6.0)
++        cdef long i = int(h * 6.0)
+         cdef float f = (h * 6.0) - i
+         cdef float p = 1.0 - s
+         cdef float q = 1.0 - s * f

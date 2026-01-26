@@ -108,6 +108,9 @@ class MainWindow(QMainWindow):
         self.database = database
         self.config = config
 
+        # Set database save callback to ignore self-initiated changes
+        self.database.on_save_callback = self.on_database_save
+
         self.setWindowTitle("SPARK Personal - Snippet, Personal Archive, and Reference Keeper")
 
         # Set window icon
@@ -133,6 +136,7 @@ class MainWindow(QMainWindow):
         self.db_watcher.addPath(self.db_path)
         self.db_watcher.fileChanged.connect(self.on_database_changed)
         self.db_reload_pending = False
+        self.ignore_next_db_change = False  # Flag to ignore self-initiated changes
 
         self.init_ui()
         self.create_menus()
@@ -392,8 +396,22 @@ class MainWindow(QMainWindow):
         else:
             self.show_notification("Recalculate only works in Spreadsheets tab")
 
+    def on_database_save(self):
+        """Called by Database before committing changes."""
+        logger.debug("Database save detected - setting ignore flag")
+        self.ignore_next_db_change = True
+
     def on_database_changed(self, path):
         """Handle database file change detected by file watcher."""
+        # Check if change should be ignored (self-initiated save)
+        if self.ignore_next_db_change:
+            logger.debug("Ignoring database change (self-initiated save)")
+            self.ignore_next_db_change = False
+            # Re-add the path to the watcher (sometimes it gets removed after change)
+            if not self.db_watcher.files():
+                self.db_watcher.addPath(self.db_path)
+            return
+
         # Avoid multiple prompts for the same change
         if self.db_reload_pending:
             return
