@@ -57,7 +57,6 @@ htmlcov/
 *.whl
 
 # Android Build (auto-generated, system-specific)
-buildozer.spec
 pysidedeploy.spec
 *.apk
 *.aab
