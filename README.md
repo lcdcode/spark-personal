@@ -237,15 +237,40 @@ git pull origin master
 6. **Save**: Click "Save" to persist changes
 
 **Supported Functions:**
-- `SUM(a,b,c,...)` - Add numbers
-- `AVERAGE(a,b,c,...)` - Calculate average
-- `IF(condition,true_val,false_val)` - Conditional logic
-- `AND(True,True)` - Logical AND
-- `OR(False,False)` - Logical OR
-- `NOT(True)` - Logical NOT
-- `TODAY()` - Current date
-- `NOW()` - Current date and time
+
+**Mathematical Functions:**
+- `ABS(value)` - Absolute value
+- `FLOOR(value)` - Round down to nearest integer
+- `CEILING(value)` / `CEIL(value)` - Round up to nearest integer
+- `ROUND(value)` / `ROUND(value, decimals)` - Round to specified decimals
+- `TRUNC(value)` - Truncate to integer (remove decimal)
+- `SQRT(value)` - Square root
+- `POWER(base, exponent)` / `POW(base, exponent)` - Power/exponentiation
+- `MOD(value, divisor)` - Modulo (remainder after division)
+
+**Statistical Functions:**
+- `SUM(a,b,c,...)` or `SUM(range)` - Sum of values
+- `AVERAGE(a,b,c,...)` or `AVERAGE(range)` - Average of values
+- `MIN(a,b,c,...)` or `MIN(range)` - Minimum value
+- `MAX(a,b,c,...)` or `MAX(range)` - Maximum value
+- `COUNT(a,b,c,...)` or `COUNT(range)` - Count of values
+- `MEDIAN(a,b,c,...)` or `MEDIAN(range)` - Median value
+
+**Logical Functions:**
+- `IF(condition, true_value, false_value)` - Conditional evaluation
+- `AND(condition1, condition2, ...)` - Logical AND
+- `OR(condition1, condition2, ...)` - Logical OR
+- `NOT(condition)` - Logical NOT
+
+**Date/Time Functions:**
+- `TODAY()` - Current date (numeric timestamp)
+- `NOW()` - Current date and time (numeric timestamp)
 - `DATE(timestamp)` - Convert timestamp to date string
+- `TIME(timestamp)` - Convert timestamp to time string (HH:MM:SS)
+
+**Constants:**
+- `PI()` or `PI` - Mathematical constant π (3.14159...)
+- `E()` or `E` - Mathematical constant e (2.71828...)
 
 #### Spreadsheet Formula Reference
 
