@@ -785,7 +785,7 @@ class SpreadsheetsScreen(BoxLayout):
         # Info label
         info_label = Label(
             text='View only - Edit on desktop',
-            size_hint_y=0.15,
+            size_hint_y=0.05,
             color=(0.7, 0.7, 0.7, 1)
         )
         content.add_widget(info_label)
@@ -799,7 +799,7 @@ class SpreadsheetsScreen(BoxLayout):
         popup = Popup(
             title=sheet['name'],
             content=content,
-            size_hint=(0.95, 0.9)
+            size_hint=(0.95, 0.95)
         )
 
         def delete_sheet(btn):

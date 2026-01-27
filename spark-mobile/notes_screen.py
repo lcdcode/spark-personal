@@ -344,7 +344,7 @@ class NotesScreen(BoxLayout):
         content_scroll.add_widget(content_label)
         content.add_widget(content_scroll)
 
-        btn_layout = BoxLayout(size_hint_y=0.15, spacing=dp(10))
+        btn_layout = BoxLayout(size_hint_y=0.1, spacing=dp(10))
 
         edit_btn = Button(text='Edit', background_color=(0.2, 0.6, 0.8, 1))
         delete_btn = Button(text='Delete', background_color=(0.8, 0.2, 0.2, 1))
@@ -353,7 +353,7 @@ class NotesScreen(BoxLayout):
         popup = Popup(
             title='View Note',
             content=content,
-            size_hint=(0.9, 0.8)
+            size_hint=(0.9, 0.95)
         )
 
         def edit_note(btn):
@@ -501,6 +501,9 @@ class NotesScreen(BoxLayout):
 
         # Horizontal rules: --- or ***
         text = re.sub(r'^(?:---|\*\*\*|___)\s*$', '[color=666666]' + '-' * 40 + '[/color]', text, flags=re.MULTILINE)
+
+        # Unordered lists: - item or * item
+        text = re.sub(r'^[\-\*]\s+(.+)$', r'  • \1', text, flags=re.MULTILINE)
 
         # Headers: # Header (use larger sizes - default is ~15sp)
         text = re.sub(r'^# (.+)$', r'[size=32sp][b]\1[/b][/size]', text, flags=re.MULTILINE)

@@ -181,20 +181,20 @@ class SnippetsScreen(BoxLayout):
         title_input = TextInput(
             text=snippet['title'],
             multiline=False,
-            size_hint_y=0.1
+            size_hint_y=0.075
         )
         content.add_widget(title_input)
 
         lang_spinner = Spinner(
             text=snippet['language'] or 'Select language',
             values=self.LANGUAGES,
-            size_hint_y=0.1
+            size_hint_y=0.05
         )
         content.add_widget(lang_spinner)
 
         code_input = TextInput(
             text=snippet['code'] or '',
-            size_hint_y=0.6,
+            size_hint_y=0.7,
             font_name='RobotoMono-Regular'
         )
         content.add_widget(code_input)
@@ -202,7 +202,7 @@ class SnippetsScreen(BoxLayout):
         tags_input = TextInput(
             text=snippet['tags'] or '',
             multiline=False,
-            size_hint_y=0.1
+            size_hint_y=0.075
         )
         content.add_widget(tags_input)
 
