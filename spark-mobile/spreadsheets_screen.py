@@ -574,10 +574,14 @@ class SpreadsheetsScreen(BoxLayout):
             raw_data = json.loads(sheet['data']) if sheet['data'] else {}
 
             # Handle both old format (flat dict) and new format (with 'cells' key)
+            column_widths = {}
+            row_heights = {}
             if isinstance(raw_data, dict):
                 if 'cells' in raw_data:
                     # New desktop format: {"cells": {...}, "column_widths": {...}, ...}
                     data = raw_data['cells']
+                    column_widths = raw_data.get('column_widths', {})
+                    row_heights = raw_data.get('row_heights', {})
                     print(f"SPARK: Loaded spreadsheet (desktop format) with {len(data)} cells")
                 else:
                     # Old mobile format: {"A1": "value", ...}
@@ -610,49 +614,81 @@ class SpreadsheetsScreen(BoxLayout):
         max_row = min(max_row + 2, 20)  # Limit to 20 rows
         max_col = min(max_col + 2, 10)  # Limit to 10 columns
 
-        # Create scrollable grid
+        # Create scrollable grid using BoxLayout for variable cell sizes
         scroll = ScrollView(size_hint_y=0.75, do_scroll_x=True, do_scroll_y=True)
 
-        grid = GridLayout(
-            cols=max_col + 2,  # +1 for row headers, +1 for extra column
-            spacing=dp(1),
+        # Helper function to get column width (from DB or default)
+        def get_col_width(col_idx):
+            width = column_widths.get(str(col_idx))
+            if width:
+                # Desktop stores in pixels, scale for mobile and add a bit of padding
+                return dp(int(width) * 0.8 + 15)
+            return dp(100)  # Default width
+
+        # Helper function to get row height (from DB or default)
+        def get_row_height(row_idx):
+            height = row_heights.get(str(row_idx))
+            if height:
+                # Desktop stores in pixels, scale for mobile
+                return dp(int(height) * 0.7 + 5)
+            return dp(45)  # Default height
+
+        # Main container with vertical layout (rows)
+        main_container = BoxLayout(orientation='vertical', size_hint=(None, None), spacing=dp(1))
+
+        header_width = dp(50)
+        header_height = dp(30)
+
+        # Header row
+        header_row = BoxLayout(orientation='horizontal', size_hint=(None, None), spacing=dp(1))
+        header_row.height = header_height
+
+        # Empty corner cell
+        header_row.add_widget(Label(
+            text='',
             size_hint=(None, None),
-            padding=dp(2)
-        )
+            size=(header_width, header_height)
+        ))
 
-        # Calculate grid size
-        cell_width = dp(80)
-        cell_height = dp(40)
-        grid.width = (max_col + 2) * cell_width
-        grid.height = (max_row + 2) * cell_height
-
-        # Header row (column labels)
-        grid.add_widget(Label(text='', size_hint=(None, None), size=(cell_width, cell_height)))
+        # Column headers
+        total_width = header_width
         for col in range(max_col + 1):
+            col_width = get_col_width(col)
+            total_width += col_width + dp(1)
             col_label = self.col_to_letter(col)
-            header = Label(
+            header_row.add_widget(Label(
                 text=col_label,
                 size_hint=(None, None),
-                size=(cell_width, cell_height),
+                size=(col_width, header_height),
                 bold=True,
                 color=(0.7, 0.9, 1, 1)
-            )
-            grid.add_widget(header)
+            ))
+
+        header_row.width = total_width
+        main_container.add_widget(header_row)
 
         # Data rows
+        total_height = header_height + dp(1)
         for row in range(max_row + 1):
+            row_height = get_row_height(row)
+            total_height += row_height + dp(1)
+
+            row_layout = BoxLayout(orientation='horizontal', size_hint=(None, None), spacing=dp(1))
+            row_layout.height = row_height
+            row_layout.width = total_width
+
             # Row header
-            row_header = Label(
+            row_layout.add_widget(Label(
                 text=str(row + 1),
                 size_hint=(None, None),
-                size=(cell_width, cell_height),
+                size=(header_width, row_height),
                 bold=True,
                 color=(0.7, 0.9, 1, 1)
-            )
-            grid.add_widget(row_header)
+            ))
 
             # Data cells
             for col in range(max_col + 1):
+                col_width = get_col_width(col)
                 cell_ref = f"{self.col_to_letter(col)}{row + 1}"
                 cell_value = data.get(cell_ref, '')
 
@@ -672,16 +708,19 @@ class SpreadsheetsScreen(BoxLayout):
                 else:
                     display_value = str(display_value)
 
-                cell_label = Label(
+                row_layout.add_widget(Label(
                     text=display_value,
                     size_hint=(None, None),
-                    size=(cell_width, cell_height),
+                    size=(col_width, row_height),
                     color=(1, 1, 1, 1) if display_value else (0.5, 0.5, 0.5, 1),
                     padding=(dp(5), dp(5))
-                )
-                grid.add_widget(cell_label)
+                ))
 
-        scroll.add_widget(grid)
+            main_container.add_widget(row_layout)
+
+        main_container.width = total_width
+        main_container.height = total_height
+        scroll.add_widget(main_container)
         content.add_widget(scroll)
 
         # Info label
