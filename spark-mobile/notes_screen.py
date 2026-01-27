@@ -81,7 +81,7 @@ class NotesScreen(BoxLayout):
 
             if not root_notes:
                 label = Label(
-                    text='No notes yet.\nTap "+ New" to create one.',
+                    text='No notes yet.\nTap "+ New Note" to create one.',
                     size_hint_y=None,
                     height=dp(100),
                     color=(0.5, 0.5, 0.5, 1)
@@ -108,6 +108,8 @@ class NotesScreen(BoxLayout):
         from kivy.clock import Clock
 
         # Preview text - shortened for mobile
+        # We don't actually show the preview anymore (it was ugly) but it's here to guide the 
+        # height of the button
         preview = note['content'][:35] + "..." if len(note['content']) > 35 else note['content']
         preview = preview.replace('\n', ' ')  # Replace newlines with spaces
         preview_text = f"\n{preview}" if preview else ""
@@ -129,7 +131,7 @@ class NotesScreen(BoxLayout):
         )
 
         note_btn = Button(
-            text=f"{note['title']}{preview_text}",
+            text=f"{note['title']}", # removed preview_text - it looked ugly
             halign='left',
             valign='middle',
             background_normal='',
@@ -323,6 +325,22 @@ class NotesScreen(BoxLayout):
         # Allow label to expand vertically based on text
         content_label.bind(texture_size=lambda instance, value: setattr(instance, 'height', value[1]))
         content_label.bind(size=lambda lbl, size: setattr(lbl, 'text_size', (size[0] - dp(20), None)))
+
+        # Handle link clicks
+        def on_ref_press(instance, ref):
+            """Handle clicks on links in the markdown."""
+            import webbrowser
+
+            try:
+                # Only handle http/https URLs, not file:// URIs
+                if ref.startswith('http://') or ref.startswith('https://'):
+                    webbrowser.open(ref)
+            except Exception as e:
+                print(f"Failed to open link {ref}: {e}")
+                import traceback
+                traceback.print_exc()
+
+        content_label.bind(on_ref_press=on_ref_press)
         content_scroll.add_widget(content_label)
         content.add_widget(content_scroll)
 
@@ -360,9 +378,109 @@ class NotesScreen(BoxLayout):
     def _markdown_to_simple_text(self, md_text):
         """Convert markdown to Kivy markup for basic rendering."""
         import re
+        import os
+        from pathlib import Path
 
         # Convert markdown to basic Kivy markup
         text = md_text
+
+        # Handle escaped characters first (before any markdown processing)
+        # Replace escaped markdown characters with placeholders that won't be processed
+        escape_map = {
+            r'\*': '{{ESCAPEDASTERISK}}',
+            r'\_': '{{ESCAPEDUNDERSCORE}}',
+            r'\`': '{{ESCAPEDBACKTICK}}',
+            r'\[': '{{ESCAPEDLBRACKET}}',
+            r'\]': '{{ESCAPEDRBRACKET}}',
+            r'\#': '{{ESCAPEDHASH}}',
+            r'\!': '{{ESCAPEDEXCLAMATION}}',
+            r'\|': '{{ESCAPEDPIPE}}',
+            r'\-': '{{ESCAPEDDASH}}',
+            r'\>': '{{ESCAPEDGT}}',
+        }
+
+        for escaped, placeholder in escape_map.items():
+            text = text.replace(escaped, placeholder)
+
+        # Tables: Process before code blocks to avoid conflicts
+        def process_tables(text):
+            lines = text.split('\n')
+            result = []
+            i = 0
+
+            while i < len(lines):
+                line = lines[i]
+
+                # Check if this line might be a table (contains |)
+                if '|' in line and i + 1 < len(lines):
+                    # Check if next line is a separator
+                    next_line = lines[i + 1]
+                    if re.match(r'^\s*\|?[\s\-:|]+\|?\s*$', next_line):
+                        # Found a table! Collect all table rows
+                        table_lines = [line, next_line]
+                        j = i + 2
+                        while j < len(lines) and '|' in lines[j]:
+                            table_lines.append(lines[j])
+                            j += 1
+
+                        # Format the table
+                        formatted = ['[color=666666]' + '-' * 40 + '[/color]']
+
+                        for idx, tline in enumerate(table_lines):
+                            if idx == 1:  # Skip separator
+                                continue
+
+                            # Split by | and clean up
+                            cells = [c.strip() for c in tline.split('|')]
+                            if cells and not cells[0]:
+                                cells = cells[1:]
+                            if cells and not cells[-1]:
+                                cells = cells[:-1]
+
+                            if idx == 0:  # Header
+                                formatted.append(' [color=888888]|[/color] '.join([f'[b]{c}[/b]' for c in cells]))
+                            else:  # Data rows
+                                formatted.append(' [color=888888]|[/color] '.join(cells))
+
+                        formatted.append('[color=666666]' + '-' * 40 + '[/color]')
+                        result.append('\n'.join(formatted))
+                        i = j
+                        continue
+
+                result.append(line)
+                i += 1
+
+            return '\n'.join(result)
+
+        text = process_tables(text)
+
+        # Code blocks: ```code``` (must be processed before inline code)
+        def replace_code_block(match):
+            code = match.group(1)
+            # Use a monospace font and background color simulation via color
+            lines = code.strip().split('\n')
+            formatted_lines = [f'[font=RobotoMono-Regular][color=cccccc]{line}[/color][/font]' for line in lines]
+            return '\n[color=444444]' + '-' * 40 + '[/color]\n' + '\n'.join(formatted_lines) + '\n[color=444444]' + '-' * 40 + '[/color]\n'
+        text = re.sub(r'```(?:\w+)?\n(.*?)```', replace_code_block, text, flags=re.DOTALL)
+
+        # Images: ![alt](path) - Show placeholder text (inline images not supported in Kivy Label)
+        # Process BEFORE links since both use bracket syntax
+        def replace_image(match):
+            alt_text = match.group(1)
+            img_path = match.group(2)
+            return f'{{{{IMAGE:{alt_text or img_path}}}}}'  # Use placeholder that won't match link regex
+
+        text = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', replace_image, text)
+
+        # Links: [text](url)
+        text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'[color=4488ff][ref=\2][u]\1[/u][/ref][/color]', text)
+
+        # Now replace image placeholders with final markup
+        def replace_image_placeholder(match):
+            content = match.group(1)
+            return f'[color=4488ff][i][Image: {content}][/i] [color=888888](viewable on desktop)[/color][/color]'
+
+        text = re.sub(r'\{\{IMAGE:([^}]+)\}\}', replace_image_placeholder, text)
 
         # Bold: **text** or __text__
         text = re.sub(r'\*\*(.+?)\*\*', r'[b]\1[/b]', text)
@@ -372,13 +490,42 @@ class NotesScreen(BoxLayout):
         text = re.sub(r'\*(.+?)\*', r'[i]\1[/i]', text)
         text = re.sub(r'_(.+?)_', r'[i]\1[/i]', text)
 
-        # Code: `code`
-        text = re.sub(r'`(.+?)`', r'[font=RobotoMono-Regular][color=00ff00]\1[/color][/font]', text)
+        # Inline code: `code`
+        text = re.sub(r'`(.+?)`', r'[font=RobotoMono-Regular][color=cccccc]\1[/color][/font]', text)
 
-        # Headers: # Header
-        text = re.sub(r'^# (.+)$', r'[size=24][b]\1[/b][/size]', text, flags=re.MULTILINE)
-        text = re.sub(r'^## (.+)$', r'[size=20][b]\1[/b][/size]', text, flags=re.MULTILINE)
-        text = re.sub(r'^### (.+)$', r'[size=18][b]\1[/b][/size]', text, flags=re.MULTILINE)
+        # Block quotes: > text
+        def replace_blockquote(match):
+            quote_text = match.group(1)
+            return f'[color=888888]|[/color] [i][color=aaaaaa]{quote_text}[/color][/i]'
+        text = re.sub(r'^>\s*(.+)$', replace_blockquote, text, flags=re.MULTILINE)
+
+        # Horizontal rules: --- or ***
+        text = re.sub(r'^(?:---|\*\*\*|___)\s*$', '[color=666666]' + '-' * 40 + '[/color]', text, flags=re.MULTILINE)
+
+        # Headers: # Header (use larger sizes - default is ~15sp)
+        text = re.sub(r'^# (.+)$', r'[size=32sp][b]\1[/b][/size]', text, flags=re.MULTILINE)
+        text = re.sub(r'^## (.+)$', r'[size=28sp][b]\1[/b][/size]', text, flags=re.MULTILINE)
+        text = re.sub(r'^### (.+)$', r'[size=24sp][b]\1[/b][/size]', text, flags=re.MULTILINE)
+        text = re.sub(r'^#### (.+)$', r'[size=20sp][b]\1[/b][/size]', text, flags=re.MULTILINE)
+        text = re.sub(r'^##### (.+)$', r'[size=18sp][b]\1[/b][/size]', text, flags=re.MULTILINE)
+        text = re.sub(r'^###### (.+)$', r'[size=16sp][b]\1[/b][/size]', text, flags=re.MULTILINE)
+
+        # Restore escaped characters (after all markdown processing)
+        unescape_map = {
+            '{{ESCAPEDASTERISK}}': '*',
+            '{{ESCAPEDUNDERSCORE}}': '_',
+            '{{ESCAPEDBACKTICK}}': '`',
+            '{{ESCAPEDLBRACKET}}': '[',
+            '{{ESCAPEDRBRACKET}}': ']',
+            '{{ESCAPEDHASH}}': '#',
+            '{{ESCAPEDEXCLAMATION}}': '!',
+            '{{ESCAPEDPIPE}}': '|',
+            '{{ESCAPEDDASH}}': '-',
+            '{{ESCAPEDGT}}': '>',
+        }
+
+        for placeholder, char in unescape_map.items():
+            text = text.replace(placeholder, char)
 
         return text
 

@@ -8,6 +8,7 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.metrics import dp
+from kivy.core.clipboard import Clipboard
 import json
 import re
 import math
@@ -63,7 +64,16 @@ class SpreadsheetsScreen(BoxLayout):
         for sheet in sheets:
             # Parse data to show preview
             try:
-                data = json.loads(sheet['data']) if sheet['data'] else {}
+                raw_data = json.loads(sheet['data']) if sheet['data'] else {}
+
+                # Handle both old format (flat dict) and new format (with 'cells' key)
+                if isinstance(raw_data, dict) and 'cells' in raw_data:
+                    # New desktop format: {"cells": {...}, "column_widths": {...}, ...}
+                    data = raw_data['cells']
+                else:
+                    # Old mobile format: {"A1": "value", ...}
+                    data = raw_data
+
                 cell_count = len(data)
                 preview = f"{cell_count} cells"
             except:
@@ -576,12 +586,14 @@ class SpreadsheetsScreen(BoxLayout):
             # Handle both old format (flat dict) and new format (with 'cells' key)
             column_widths = {}
             row_heights = {}
+            cell_formatting = {}
             if isinstance(raw_data, dict):
                 if 'cells' in raw_data:
                     # New desktop format: {"cells": {...}, "column_widths": {...}, ...}
                     data = raw_data['cells']
                     column_widths = raw_data.get('column_widths', {})
                     row_heights = raw_data.get('row_heights', {})
+                    cell_formatting = raw_data.get('cell_formatting', {})
                     print(f"SPARK: Loaded spreadsheet (desktop format) with {len(data)} cells")
                 else:
                     # Old mobile format: {"A1": "value", ...}
@@ -600,6 +612,7 @@ class SpreadsheetsScreen(BoxLayout):
             print(f"SPARK: ERROR parsing spreadsheet data: {e}")
             print(f"SPARK: Raw data from DB: {sheet['data'][:200] if sheet['data'] else 'None'}")
             data = {}
+            cell_formatting = {}
 
         # Determine grid size from existing data
         max_row, max_col = 4, 4  # Default 5x5 (0-indexed)
@@ -616,6 +629,10 @@ class SpreadsheetsScreen(BoxLayout):
 
         # Create scrollable grid using BoxLayout for variable cell sizes
         scroll = ScrollView(size_hint_y=0.75, do_scroll_x=True, do_scroll_y=True)
+
+        # Track currently selected cell for copy functionality
+        self.selected_cell_widget = None
+        self.copy_toast = None
 
         # Helper function to get column width (from DB or default)
         def get_col_width(col_idx):
@@ -708,13 +725,55 @@ class SpreadsheetsScreen(BoxLayout):
                 else:
                     display_value = str(display_value)
 
-                row_layout.add_widget(Label(
-                    text=display_value,
+                # Apply formatting using Kivy markup if available
+                formatting = cell_formatting.get(cell_ref, {})
+                markup_enabled = False
+                formatted_display = display_value
+                if formatting:
+                    # Escape existing markup characters in the display value
+                    formatted_display = display_value.replace('[', '&bl;').replace(']', '&br;')
+
+                    # Apply formatting tags
+                    if formatting.get('bold'):
+                        formatted_display = f'[b]{formatted_display}[/b]'
+                        markup_enabled = True
+                    if formatting.get('italic'):
+                        formatted_display = f'[i]{formatted_display}[/i]'
+                        markup_enabled = True
+                    if formatting.get('underline'):
+                        formatted_display = f'[u]{formatted_display}[/u]'
+                        markup_enabled = True
+
+                # Create a container for each cell to handle tap-to-copy
+                cell_container = BoxLayout(size_hint=(None, None), size=(col_width, row_height))
+
+                # Use Label for all cells (with or without markup)
+                cell_label = Label(
+                    text=formatted_display,
+                    markup=markup_enabled,
                     size_hint=(None, None),
                     size=(col_width, row_height),
                     color=(1, 1, 1, 1) if display_value else (0.5, 0.5, 0.5, 1),
                     padding=(dp(5), dp(5))
-                ))
+                )
+
+                # Make cell tappable to copy its content
+                def on_cell_touch(instance, touch, value=display_value):
+                    if instance.collide_point(*touch.pos):
+                        if value:  # Only copy if there's content
+                            Clipboard.copy(value)
+                            # Show a brief toast message
+                            instance.color = (0.5, 1, 0.5, 1)  # Green flash
+                            def reset_color(dt):
+                                instance.color = (1, 1, 1, 1) if value else (0.5, 0.5, 0.5, 1)
+                            from kivy.clock import Clock
+                            Clock.schedule_once(reset_color, 0.3)
+                        return True
+                    return False
+
+                cell_label.bind(on_touch_down=on_cell_touch)
+                cell_container.add_widget(cell_label)
+                row_layout.add_widget(cell_container)
 
             main_container.add_widget(row_layout)
 
@@ -725,7 +784,7 @@ class SpreadsheetsScreen(BoxLayout):
 
         # Info label
         info_label = Label(
-            text='Formulas are evaluated (e.g., =A1+B1)\nView only - Edit on desktop',
+            text='View only - Edit on desktop',
             size_hint_y=0.15,
             color=(0.7, 0.7, 0.7, 1)
         )
