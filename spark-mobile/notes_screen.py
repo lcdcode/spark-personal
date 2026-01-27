@@ -502,7 +502,14 @@ class NotesScreen(BoxLayout):
         # Horizontal rules: --- or ***
         text = re.sub(r'^(?:---|\*\*\*|___)\s*$', '[color=666666]' + '-' * 40 + '[/color]', text, flags=re.MULTILINE)
 
-        # Unordered lists: - item or * item
+        # Unordered lists: - item or * item (process nested lists first, then top-level)
+        # Level 3+ (8+ spaces of indentation)
+        text = re.sub(r'^\s{8,}[\-\*]\s+(.+)$', r'        ◦ \1', text, flags=re.MULTILINE)
+        # Level 2 (4-7 spaces of indentation)
+        text = re.sub(r'^\s{4,7}[\-\*]\s+(.+)$', r'      ◦ \1', text, flags=re.MULTILINE)
+        # Level 1 (2-3 spaces of indentation)
+        text = re.sub(r'^\s{2,3}[\-\*]\s+(.+)$', r'    • \1', text, flags=re.MULTILINE)
+        # Level 0 (no indentation)
         text = re.sub(r'^[\-\*]\s+(.+)$', r'  • \1', text, flags=re.MULTILINE)
 
         # Headers: # Header (use larger sizes - default is ~15sp)
