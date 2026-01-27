@@ -343,6 +343,14 @@ class SpreadsheetsScreen(BoxLayout):
             flags=re.IGNORECASE
         )
 
+        # TIME function - converts numeric timestamp to time string (HH:MM:SS)
+        expr = re.sub(
+            r'TIME\(([^)]+)\)',
+            lambda m: self.func_time(m.group(1), data),
+            expr,
+            flags=re.IGNORECASE
+        )
+
         return expr
 
     def func_sum(self, args, data):
@@ -394,6 +402,19 @@ class SpreadsheetsScreen(BoxLayout):
             timestamp = float(eval(args))
             dt = datetime.fromtimestamp(timestamp * 86400)
             return f'"{dt.strftime("%Y-%m-%d")}"'
+        except:
+            return '"#ERROR"'
+
+    def func_time(self, args, data):
+        """TIME function - converts numeric timestamp to time string (HH:MM:SS format)."""
+        args = args.strip()
+        # Replace cell references
+        args = self.replace_cell_references(args, data)
+
+        try:
+            timestamp = float(eval(args))
+            time_obj = datetime.fromtimestamp(timestamp * 86400)
+            return f'"{time_obj.strftime("%H:%M:%S")}"'
         except:
             return '"#ERROR"'
 

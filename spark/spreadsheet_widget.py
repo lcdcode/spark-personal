@@ -289,6 +289,14 @@ class FormulaEngine:
             flags=re.IGNORECASE
         )
 
+        # TIME function - converts a numeric timestamp to time string (HH:MM:SS)
+        formula = re.sub(
+            r'TIME\((.*?)\)',
+            lambda m: self.func_time(m.group(1)),
+            formula,
+            flags=re.IGNORECASE
+        )
+
         # MIN function
         formula = re.sub(
             r'MIN\((.*?)\)',
@@ -629,6 +637,23 @@ class FormulaEngine:
             date_obj = datetime.fromtimestamp(float(timestamp) * 86400)
             # Return formatted date string in quotes (so it's treated as a string in the formula)
             return f'"{date_obj.strftime("%Y-%m-%d")}"'
+        except Exception as e:
+            return f'"#ERROR: {str(e)}"'
+
+    def func_time(self, args: str) -> str:
+        """TIME function - converts numeric timestamp to time string (HH:MM:SS format)."""
+        args = args.strip()
+
+        # First, replace any cell references in the argument
+        args = self.replace_cell_references(args)
+
+        try:
+            # Evaluate the expression to get the numeric value
+            timestamp = SafeExpressionEvaluator.evaluate(args)
+            # Convert from days to seconds and create datetime
+            time_obj = datetime.fromtimestamp(float(timestamp) * 86400)
+            # Return formatted time string in quotes (24-hour format: HH:MM:SS)
+            return f'"{time_obj.strftime("%H:%M:%S")}"'
         except Exception as e:
             return f'"#ERROR: {str(e)}"'
 
