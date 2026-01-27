@@ -10,6 +10,7 @@ from kivy.uix.popup import Popup
 from kivy.metrics import dp
 import json
 import re
+import math
 from datetime import datetime
 
 
@@ -173,7 +174,8 @@ class SpreadsheetsScreen(BoxLayout):
             expr = self.normalize_equality(expr)
 
             # Evaluate the expression
-            allowed_chars = set('0123456789+-*/().()<>=!& ')
+            # Allow math function names (abs, floor, ceil, sqrt, pow, round) and math. prefix
+            allowed_chars = set('0123456789+-*/%.()<>=!& mathceilflorabsqrtpowdun')
             if all(c in allowed_chars or c.isspace() for c in expr.replace('==', '').replace('!=', '').replace('<=', '').replace('>=', '')):
                 result = eval(expr)
                 if isinstance(result, bool):
@@ -239,6 +241,12 @@ class SpreadsheetsScreen(BoxLayout):
 
     def process_functions(self, expr, data):
         """Process spreadsheet functions."""
+        # Constants - PI and E
+        expr = re.sub(r'\bPI\(\)', str(math.pi), expr, flags=re.IGNORECASE)
+        expr = re.sub(r'\bPI\b', str(math.pi), expr, flags=re.IGNORECASE)
+        expr = re.sub(r'\bE\(\)', str(math.e), expr, flags=re.IGNORECASE)
+        expr = re.sub(r'\bE\b', str(math.e), expr, flags=re.IGNORECASE)
+
         # TODAY() - returns numeric timestamp (days since epoch)
         today_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() / 86400
         expr = re.sub(r'TODAY\(\)', str(today_timestamp), expr, flags=re.IGNORECASE)
@@ -263,6 +271,62 @@ class SpreadsheetsScreen(BoxLayout):
             flags=re.IGNORECASE
         )
 
+        # MIN function
+        expr = re.sub(
+            r'MIN\(([^)]+)\)',
+            lambda m: str(self.func_min(m.group(1), data)),
+            expr,
+            flags=re.IGNORECASE
+        )
+
+        # MAX function
+        expr = re.sub(
+            r'MAX\(([^)]+)\)',
+            lambda m: str(self.func_max(m.group(1), data)),
+            expr,
+            flags=re.IGNORECASE
+        )
+
+        # COUNT function
+        expr = re.sub(
+            r'COUNT\(([^)]+)\)',
+            lambda m: str(self.func_count(m.group(1), data)),
+            expr,
+            flags=re.IGNORECASE
+        )
+
+        # MEDIAN function
+        expr = re.sub(
+            r'MEDIAN\(([^)]+)\)',
+            lambda m: str(self.func_median(m.group(1), data)),
+            expr,
+            flags=re.IGNORECASE
+        )
+
+        # Simple math functions that can be converted to Python equivalents
+        # ABS function
+        expr = re.sub(r'ABS\(([^)]+)\)', r'abs(\1)', expr, flags=re.IGNORECASE)
+
+        # FLOOR function
+        expr = re.sub(r'FLOOR\(([^)]+)\)', lambda m: f'math.floor({m.group(1)})', expr, flags=re.IGNORECASE)
+
+        # CEILING/CEIL function
+        expr = re.sub(r'CEILING\(([^)]+)\)', lambda m: f'math.ceil({m.group(1)})', expr, flags=re.IGNORECASE)
+        expr = re.sub(r'CEIL\(([^)]+)\)', lambda m: f'math.ceil({m.group(1)})', expr, flags=re.IGNORECASE)
+
+        # ROUND function
+        expr = re.sub(r'ROUND\(([^)]+)\)', r'round(\1)', expr, flags=re.IGNORECASE)
+
+        # SQRT function
+        expr = re.sub(r'SQRT\(([^)]+)\)', lambda m: f'math.sqrt({m.group(1)})', expr, flags=re.IGNORECASE)
+
+        # POWER/POW function
+        expr = re.sub(r'POWER\(([^)]+)\)', r'pow(\1)', expr, flags=re.IGNORECASE)
+        expr = re.sub(r'POW\(([^)]+)\)', r'pow(\1)', expr, flags=re.IGNORECASE)
+
+        # MOD function (convert to % operator)
+        expr = re.sub(r'MOD\(([^,]+),([^)]+)\)', r'(\1 % \2)', expr, flags=re.IGNORECASE)
+
         # IF function - more complex, needs careful parsing
         expr = self.process_if_function(expr, data)
 
@@ -285,6 +349,35 @@ class SpreadsheetsScreen(BoxLayout):
         """AVERAGE function implementation."""
         values = self.parse_function_args(args, data)
         return sum(values) / len(values) if values else 0
+
+    def func_min(self, args, data):
+        """MIN function implementation."""
+        values = self.parse_function_args(args, data)
+        return min(values) if values else 0
+
+    def func_max(self, args, data):
+        """MAX function implementation."""
+        values = self.parse_function_args(args, data)
+        return max(values) if values else 0
+
+    def func_count(self, args, data):
+        """COUNT function implementation."""
+        values = self.parse_function_args(args, data)
+        return len(values)
+
+    def func_median(self, args, data):
+        """MEDIAN function implementation."""
+        values = self.parse_function_args(args, data)
+        if not values:
+            return 0
+        sorted_values = sorted(values)
+        n = len(sorted_values)
+        if n % 2 == 0:
+            # Even number of values - average the two middle ones
+            return (sorted_values[n // 2 - 1] + sorted_values[n // 2]) / 2
+        else:
+            # Odd number of values - return the middle one
+            return sorted_values[n // 2]
 
     def func_date(self, args, data):
         """DATE function - converts numeric timestamp to date string."""
