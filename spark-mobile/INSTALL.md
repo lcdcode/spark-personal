@@ -62,7 +62,7 @@ To use the same database on both desktop and mobile:
 
 1. On device, locate database:
    ```bash
-   adb pull /data/data/org.spark.sparkmobile/files/spark.db ./mobile_spark.db
+   adb pull /data/data/com.lcdcode.sparkmobile/files/spark.db ./mobile_spark.db
    ```
 
 2. Copy to desktop app:
@@ -109,7 +109,7 @@ The `-r` flag preserves your data when upgrading.
 ## Uninstalling
 
 ```bash
-adb uninstall org.spark.sparkmobile
+adb uninstall com.lcdcode.sparkmobile
 ```
 
 Or use your device's Settings > Apps > SPARK Mobile > Uninstall

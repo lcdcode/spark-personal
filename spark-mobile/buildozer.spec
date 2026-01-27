@@ -3,7 +3,7 @@
 # Application metadata
 title = SPARK Mobile
 package.name = sparkmobile
-package.domain = org.spark
+package.domain = com.lcdcode
 
 # Source configuration
 source.dir = .
@@ -20,7 +20,7 @@ android.res_folder = res
 version = 1.0
 
 # Internal Version
-android.numeric_version = 54
+android.numeric_version = 56
 
 # Requirements
 # Pinning to Python 3 compatible versions (p4a defaults have Python 2 'long' type)
@@ -33,7 +33,7 @@ android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERN
 fullscreen = 0
 orientation = portrait
 
-# Android specific
+# We're targeting API 29 due to the easy storage management - no Play Store intent anyway.
 android.api = 29
 android.minapi = 21
 
