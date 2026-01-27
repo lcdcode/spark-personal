@@ -175,11 +175,6 @@ class FormulaEngine:
         # Replace cell references with values after function handling
         formula = self.replace_cell_references(formula)
 
-        # Check if the result is a quoted string (from DATE function, etc.)
-        # If so, return it directly without eval
-        if formula.startswith('"') and formula.endswith('"'):
-            return formula[1:-1]  # Remove quotes and return the string
-
         try:
             result = SafeExpressionEvaluator.evaluate(formula)
             return result

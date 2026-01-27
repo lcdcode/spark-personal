@@ -470,3 +470,16 @@ class TestFormulaEngine:
         assert engine.evaluate("=OR(NOT(A1>5), A2>50)") == "False"  # NOT(True) OR False
         # Multiple conditions in AND
         assert engine.evaluate("=AND(A1>0, A2>0, A3>0)") == "True"  # All positive
+
+    def test_string_concatenation(self, sample_cells):
+        """Test string concatenation with + operator."""
+        engine = FormulaEngine(sample_cells)
+        # Simple string concatenation
+        assert engine.evaluate('="hello" + " " + "world"') == "hello world"
+        assert engine.evaluate('="foo" + "bar"') == "foobar"
+        # String concatenation with DATE and TIME functions
+        # Note: We can't test the exact output since it depends on TODAY()/NOW()
+        # but we can test that it doesn't have extra quotes
+        result = engine.evaluate('=DATE(19817) + " " + TIME(19817)')
+        assert '"' not in result  # No stray quotes in result
+        assert " " in result  # Should have the space we concatenated

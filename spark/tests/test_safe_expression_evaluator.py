@@ -87,6 +87,14 @@ class TestSafeExpressionEvaluator:
         assert SafeExpressionEvaluator.evaluate('"hello"') == "hello"
         assert SafeExpressionEvaluator.evaluate("'world'") == "world"
 
+    def test_string_concatenation(self):
+        """Test string concatenation with + operator."""
+        assert SafeExpressionEvaluator.evaluate('"hello" + " " + "world"') == "hello world"
+        assert SafeExpressionEvaluator.evaluate('"foo" + "bar"') == "foobar"
+        assert SafeExpressionEvaluator.evaluate('"test" + " " + "123"') == "test 123"
+        # Mixed quotes
+        assert SafeExpressionEvaluator.evaluate("'hello' + ' ' + 'world'") == "hello world"
+
     def test_invalid_expressions(self):
         """Test that invalid expressions raise errors."""
         with pytest.raises(ValueError):

@@ -166,17 +166,24 @@ class SpreadsheetsScreen(BoxLayout):
             # Replace cell references with their values
             expr = self.replace_cell_references(expr, data)
 
-            # Check if result is a quoted string (from DATE function, etc.)
-            if expr.startswith('"') and expr.endswith('"'):
-                return expr[1:-1]
-
             # Normalize = to == for comparisons (for IF function)
             expr = self.normalize_equality(expr)
 
             # Evaluate the expression
+            # For security, extract string literals first and validate the code structure
+            string_literals = []
+            def extract_strings(match):
+                string_literals.append(match.group(0))
+                return f'__STR_{len(string_literals)-1}__'
+
+            # Extract quoted strings (both single and double quotes)
+            expr_no_strings = re.sub(r'"[^"]*"|\'[^\']*\'', extract_strings, expr)
+
+            # Validate the non-string parts
             # Allow math function names (abs, floor, ceil, sqrt, pow, round) and math. prefix
-            allowed_chars = set('0123456789+-*/%.()<>=!& mathceilflorabsqrtpowdun')
-            if all(c in allowed_chars or c.isspace() for c in expr.replace('==', '').replace('!=', '').replace('<=', '').replace('>=', '')):
+            allowed_chars = set('0123456789+-*/%.()<>=!& mathceilflorabsqrtpowdun_ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+            if all(c in allowed_chars or c.isspace() for c in expr_no_strings.replace('==', '').replace('!=', '').replace('<=', '').replace('>=', '')):
+                # Expression structure is safe, now evaluate the original expression with strings
                 result = eval(expr)
                 if isinstance(result, bool):
                     return str(result)
