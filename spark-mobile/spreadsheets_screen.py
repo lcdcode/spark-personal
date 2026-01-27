@@ -24,7 +24,7 @@ class SpreadsheetsScreen(BoxLayout):
         self.orientation = 'vertical'
 
         # Top bar
-        top_bar = BoxLayout(size_hint_y=0.1, padding=dp(10), spacing=dp(10))
+        top_bar = BoxLayout(size_hint_y=0.05, padding=dp(10), spacing=dp(10))
 
         title = Label(text='Spreadsheets (View Only)', font_size='20sp')
         top_bar.add_widget(title)

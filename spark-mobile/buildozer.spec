@@ -20,7 +20,7 @@ android.res_folder = res
 version = 1.0
 
 # Internal Version
-android.numeric_version = 56
+android.numeric_version = 57
 
 # Requirements
 # Pinning to Python 3 compatible versions (p4a defaults have Python 2 'long' type)

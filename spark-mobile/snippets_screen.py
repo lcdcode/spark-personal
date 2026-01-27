@@ -25,7 +25,7 @@ class SnippetsScreen(BoxLayout):
         self.orientation = 'vertical'
 
         # Top bar
-        top_bar = BoxLayout(size_hint_y=0.1, padding=dp(10), spacing=dp(10))
+        top_bar = BoxLayout(size_hint_y=0.05, padding=dp(10), spacing=dp(10))
 
         self.search_input = TextInput(
             hint_text='Search snippets...',
@@ -83,10 +83,11 @@ class SnippetsScreen(BoxLayout):
 
         for snippet in sorted_snippets:
             lang = snippet['language'] or "No Language"
-            code_preview = snippet['code'][:50] + "..." if len(snippet['code']) > 50 else snippet['code']
+            # Don't need code_preview - it looks ugly
+            # code_preview = snippet['code'][:50] + "..." if len(snippet['code']) > 50 else snippet['code']
 
             snippet_btn = Button(
-                text=f"[{lang}] {snippet['title']}\n{code_preview}",
+                text=f"[{lang}] {snippet['title']}", # removed code_preview - it looked ugly
                 size_hint_y=None,
                 height=dp(80),
                 halign='left',

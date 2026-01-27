@@ -21,7 +21,7 @@ class NotesScreen(BoxLayout):
         self.current_note_id = None
 
         # Top bar with add button
-        top_bar = BoxLayout(size_hint_y=0.1, padding=dp(10), spacing=dp(10))
+        top_bar = BoxLayout(size_hint_y=0.05, padding=dp(10), spacing=dp(10))
 
         self.search_input = TextInput(
             hint_text='Search notes...',
