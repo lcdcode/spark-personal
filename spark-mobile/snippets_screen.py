@@ -215,7 +215,7 @@ class SnippetsScreen(BoxLayout):
         popup = Popup(
             title='Edit Snippet',
             content=content,
-            size_hint=(0.9, 0.8)
+            size_hint=(0.9, 0.95)
         )
 
         def save_snippet(btn):
