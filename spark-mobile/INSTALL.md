@@ -43,7 +43,7 @@ adb install -r bin/sparkmobile-0.2-arm64-v8a-debug.apk
 
 When you first launch SPARK Mobile:
 
-1. The app will create a database at `/data/data/org.spark.sparkmobile/files/spark.db`
+1. BEFORE LAUNCHING add a folder called SPARK in your Documents on the device and add a Storage Scope for SPARK Mobile to this folder! The app will check to see if it has access to a `Documents/SPARK` folder. If not it will default to `Downloads/SPARK` if this too fails, the app will close.
 2. Start by adding some notes or snippets
 3. All data is stored locally on your device
 
@@ -70,9 +70,9 @@ To use the same database on both desktop and mobile:
    cp mobile_spark.db ~/.spark/spark.db  # Adjust path as needed
    ```
 
-### Option 2: Cloud Sync (Future)
+### Option 2: Cloud Sync (Watch Out)
 
-A cloud sync feature is planned for future versions to automatically sync between devices.
+A peer-to-peer sync solution such as Syncthing is recommended. Syncthing is TLS encrypted. Your database file is not itself encrypted!
 
 ## Troubleshooting
 
@@ -84,14 +84,11 @@ A cloud sync feature is planned for future versions to automatically sync betwee
 
 ### App Crashes on Start
 
+- Do you have a folder called `Documents/SPARK`? Do you have a storage scope for SPARK Mobile to access this folder?
+
 - Check logcat for errors:
   ```bash
   adb logcat | grep python
-  ```
-
-- Database permissions issue? Try clearing app data:
-  ```bash
-  adb shell pm clear org.spark.sparkmobile
   ```
 
 ### Can't See My Data
