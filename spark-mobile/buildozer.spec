@@ -7,20 +7,22 @@ package.domain = com.lcdcode
 
 # Source configuration
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,db
+source.include_exts = py,png,jpg,kv,atlas,db,xml
 
-# App icon - using scaled-up version for better visibility in launchers
-# The scaled version has the logo enlarged from adaptive icon safe zone (66%) to 85%
-icon.filename = res/mipmap-xxxhdpi/ic_launcher_foreground.png
+# App icon - standard icon for older Android versions (< API 26)
+icon.filename = res/mipmap-xxxhdpi/ic_launcher.png
 
-# Include custom res folder to add mipmap icons
-android.res_folder = res
+# Adaptive icons for Android 8.0+ (API 26+)
+# Foreground should be your logo in the safe 66% center area with transparent background
+# Background can be a solid color image or pattern
+icon.adaptive_foreground.filename = res/mipmap-xxxhdpi/ic_launcher_foreground.png
+icon.adaptive_background.filename = %(source.dir)s/adaptive_background_white.png
 
 # Version
 version = 1.0
 
 # Internal Version
-android.numeric_version = 59
+android.numeric_version = 63
 
 # Requirements
 # Pinning to Python 3 compatible versions (p4a defaults have Python 2 'long' type)
