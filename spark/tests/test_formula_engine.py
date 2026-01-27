@@ -424,3 +424,49 @@ class TestFormulaEngine:
         assert engine.evaluate("=FLOOR(A2/3)") == 6  # FLOOR(20/3) = 6
         assert engine.evaluate("=CEIL(A1/3)") == 4  # CEIL(10/3) = 4
         assert engine.evaluate("=ABS(B1-A1)") == 5  # ABS(5-10) = 5
+
+    def test_and_function(self, sample_cells):
+        """Test AND function with boolean logic."""
+        engine = FormulaEngine(sample_cells)
+        # AND with literal boolean values
+        assert engine.evaluate("=AND(True, True)") == "True"
+        assert engine.evaluate("=AND(True, False)") == "False"
+        assert engine.evaluate("=AND(False, False)") == "False"
+        # AND with comparisons
+        assert engine.evaluate("=AND(A1>5, A2>15)") == "True"  # A1=10>5, A2=20>15
+        assert engine.evaluate("=AND(A1>15, A2>15)") == "False"  # A1=10 not >15
+        assert engine.evaluate("=and(5>3, 10>8)") == "True"  # Case insensitive
+
+    def test_or_function(self, sample_cells):
+        """Test OR function with boolean logic."""
+        engine = FormulaEngine(sample_cells)
+        # OR with literal boolean values
+        assert engine.evaluate("=OR(True, False)") == "True"
+        assert engine.evaluate("=OR(False, True)") == "True"
+        assert engine.evaluate("=OR(False, False)") == "False"
+        assert engine.evaluate("=OR(True, True)") == "True"
+        # OR with comparisons
+        assert engine.evaluate("=OR(A1>15, A2>15)") == "True"  # A2=20>15
+        assert engine.evaluate("=OR(A1>50, A2>50)") == "False"  # Both false
+        assert engine.evaluate("=or(5>10, 10>8)") == "True"  # Case insensitive
+
+    def test_not_function(self, sample_cells):
+        """Test NOT function with boolean logic."""
+        engine = FormulaEngine(sample_cells)
+        # NOT with literal boolean values
+        assert engine.evaluate("=NOT(True)") == "False"
+        assert engine.evaluate("=NOT(False)") == "True"
+        # NOT with comparisons
+        assert engine.evaluate("=NOT(A1>15)") == "True"  # A1=10, so NOT(False)=True
+        assert engine.evaluate("=NOT(A1>5)") == "False"  # A1=10, so NOT(True)=False
+        assert engine.evaluate("=not(5>10)") == "True"  # Case insensitive
+
+    def test_combined_boolean_functions(self, sample_cells):
+        """Test combining boolean functions together."""
+        engine = FormulaEngine(sample_cells)
+        # AND with NOT
+        assert engine.evaluate("=AND(A1>5, NOT(A2>50))") == "True"  # 10>5 AND NOT(20>50)
+        # OR with NOT
+        assert engine.evaluate("=OR(NOT(A1>5), A2>50)") == "False"  # NOT(True) OR False
+        # Multiple conditions in AND
+        assert engine.evaluate("=AND(A1>0, A2>0, A3>0)") == "True"  # All positive

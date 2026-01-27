@@ -327,6 +327,11 @@ class SpreadsheetsScreen(BoxLayout):
         # MOD function (convert to % operator)
         expr = re.sub(r'MOD\(([^,]+),([^)]+)\)', r'(\1 % \2)', expr, flags=re.IGNORECASE)
 
+        # Boolean functions - AND, OR, NOT
+        expr = self.process_and_function(expr, data)
+        expr = self.process_or_function(expr, data)
+        expr = self.process_not_function(expr, data)
+
         # IF function - more complex, needs careful parsing
         expr = self.process_if_function(expr, data)
 
@@ -414,6 +419,60 @@ class SpreadsheetsScreen(BoxLayout):
                 return '"#ERROR"'
 
         return re.sub(pattern, replace_if, expr, flags=re.IGNORECASE)
+
+    def process_and_function(self, expr, data):
+        """Process AND function - returns True if all conditions are true."""
+        # Simple pattern for AND with 2 arguments (can be extended)
+        pattern = r'\bAND\(([^,]+),([^)]+)\)'
+
+        def replace_and(match):
+            conditions = [match.group(1).strip(), match.group(2).strip()]
+            try:
+                for condition in conditions:
+                    condition = self.replace_cell_references(condition, data)
+                    condition = self.normalize_equality(condition)
+                    if not eval(condition):
+                        return 'False'
+                return 'True'
+            except:
+                return 'False'
+
+        return re.sub(pattern, replace_and, expr, flags=re.IGNORECASE)
+
+    def process_or_function(self, expr, data):
+        """Process OR function - returns True if any condition is true."""
+        # Simple pattern for OR with 2 arguments (can be extended)
+        pattern = r'\bOR\(([^,]+),([^)]+)\)'
+
+        def replace_or(match):
+            conditions = [match.group(1).strip(), match.group(2).strip()]
+            try:
+                for condition in conditions:
+                    condition = self.replace_cell_references(condition, data)
+                    condition = self.normalize_equality(condition)
+                    if eval(condition):
+                        return 'True'
+                return 'False'
+            except:
+                return 'False'
+
+        return re.sub(pattern, replace_or, expr, flags=re.IGNORECASE)
+
+    def process_not_function(self, expr, data):
+        """Process NOT function - returns the opposite boolean value."""
+        pattern = r'\bNOT\(([^)]+)\)'
+
+        def replace_not(match):
+            condition = match.group(1).strip()
+            try:
+                condition = self.replace_cell_references(condition, data)
+                condition = self.normalize_equality(condition)
+                result = eval(condition)
+                return 'False' if result else 'True'
+            except:
+                return 'True'
+
+        return re.sub(pattern, replace_not, expr, flags=re.IGNORECASE)
 
     def parse_function_args(self, args, data):
         """Parse function arguments and return numeric values."""

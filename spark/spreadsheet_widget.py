@@ -389,11 +389,44 @@ class FormulaEngine:
             flags=re.IGNORECASE
         )
 
-        # Boolean functions
-        formula = formula.replace('AND(True,True)', 'True')
-        formula = formula.replace('OR(False,False)', 'False')
-        formula = formula.replace('NOT(True)', 'False')
-        formula = formula.replace('NOT(False)', 'True')
+        # Boolean functions - AND, OR, NOT
+        # These need special handling because they can have variable numbers of arguments
+
+        # NOT function (single argument)
+        formula = re.sub(
+            r'\bNOT\((.*?)\)',
+            lambda m: self.func_not(m.group(1)),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # AND function (variable arguments) - use a custom parser
+        def process_and(match):
+            args = match.group(1)
+            # Split by commas but respect nested parentheses
+            conditions = self._split_function_args(args)
+            return self.func_and(*conditions)
+
+        formula = re.sub(
+            r'\bAND\((.*?)\)',
+            process_and,
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # OR function (variable arguments) - use a custom parser
+        def process_or(match):
+            args = match.group(1)
+            # Split by commas but respect nested parentheses
+            conditions = self._split_function_args(args)
+            return self.func_or(*conditions)
+
+        formula = re.sub(
+            r'\bOR\((.*?)\)',
+            process_or,
+            formula,
+            flags=re.IGNORECASE
+        )
 
         return formula
 
@@ -435,6 +468,29 @@ class FormulaEngine:
         else:
             # Odd number of values - return the middle one
             return sorted_values[n // 2]
+
+    def _split_function_args(self, args: str) -> list:
+        """Split function arguments by commas while respecting nested parentheses."""
+        parts = []
+        current = []
+        depth = 0
+
+        for char in args:
+            if char == ',' and depth == 0:
+                parts.append(''.join(current).strip())
+                current = []
+            else:
+                if char == '(':
+                    depth += 1
+                elif char == ')':
+                    depth -= 1
+                current.append(char)
+
+        # Add the last part
+        if current:
+            parts.append(''.join(current).strip())
+
+        return parts
 
     def _parse_function_args(self, args: str) -> list:
         """Parse function arguments including cell references and ranges."""
@@ -522,6 +578,42 @@ class FormulaEngine:
         except Exception as e:
             # Return false value if condition evaluation fails
             return false_val
+
+    def func_and(self, *conditions: str) -> str:
+        """AND function - returns True if all conditions are true."""
+        try:
+            for condition in conditions:
+                # Replace cell references in each condition
+                condition_resolved = self.replace_cell_references(condition.strip())
+                result = SafeExpressionEvaluator.evaluate(condition_resolved)
+                if not result:
+                    return 'False'
+            return 'True'
+        except Exception as e:
+            return 'False'
+
+    def func_or(self, *conditions: str) -> str:
+        """OR function - returns True if any condition is true."""
+        try:
+            for condition in conditions:
+                # Replace cell references in each condition
+                condition_resolved = self.replace_cell_references(condition.strip())
+                result = SafeExpressionEvaluator.evaluate(condition_resolved)
+                if result:
+                    return 'True'
+            return 'False'
+        except Exception as e:
+            return 'False'
+
+    def func_not(self, condition: str) -> str:
+        """NOT function - returns the opposite boolean value."""
+        try:
+            # Replace cell references in condition
+            condition_resolved = self.replace_cell_references(condition.strip())
+            result = SafeExpressionEvaluator.evaluate(condition_resolved)
+            return 'False' if result else 'True'
+        except Exception as e:
+            return 'True'
 
     def func_date(self, args: str) -> str:
         """DATE function - converts numeric timestamp (days since epoch) back to date string."""
