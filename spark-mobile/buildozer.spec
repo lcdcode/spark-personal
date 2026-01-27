@@ -17,7 +17,10 @@ icon.filename = res/mipmap-xxxhdpi/ic_launcher_foreground.png
 android.res_folder = res
 
 # Version
-version = 2.9
+version = 1.0
+
+# Internal Version
+android.numeric_version = 36
 
 # Requirements
 # Pinning to Python 3 compatible versions (p4a defaults have Python 2 'long' type)

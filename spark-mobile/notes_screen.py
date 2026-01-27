@@ -105,10 +105,7 @@ class NotesScreen(BoxLayout):
     def _add_note_widget(self, note, level=0):
         """Create and add a note button widget with proper styling."""
         from kivy.uix.anchorlayout import AnchorLayout
-
-        # Create indent based on hierarchy level
-        indent = "  " * level
-        tree_symbol = ">> " if level > 0 else ""
+        from kivy.clock import Clock
 
         # Preview text - shortened for mobile
         preview = note['content'][:35] + "..." if len(note['content']) > 35 else note['content']
@@ -123,15 +120,16 @@ class NotesScreen(BoxLayout):
         else:
             bg_color = (0.2, 0.2, 0.3, 1)  # Darker for deeper levels
 
-        # Create button in a container to control sizing
+        # Create button in a container with left padding based on level
+        left_indent = dp(20) * level  # 20dp indent per level
         container = BoxLayout(
             size_hint_y=None,
             height=dp(75) if preview else dp(55),
-            padding=(dp(5), dp(3))
+            padding=(dp(5) + left_indent, dp(3), dp(5), dp(3))
         )
 
         note_btn = Button(
-            text=f"{indent}{tree_symbol}{note['title']}{preview_text}",
+            text=f"{note['title']}{preview_text}",
             halign='left',
             valign='middle',
             background_normal='',
@@ -147,7 +145,42 @@ class NotesScreen(BoxLayout):
             btn.text_size = (size[0] - dp(30), None)
 
         note_btn.bind(size=update_text_size)
-        note_btn.bind(on_press=lambda btn, note_id=note['id']: self.show_note_editor(note_id))
+
+        # Store state for long press detection
+        note_btn._long_press_event = None
+        note_btn._is_long_press = False
+
+        def on_button_down(instance):
+            """Handle button press start - schedule long press detection."""
+            note_btn._is_long_press = False
+            note_btn._long_press_event = Clock.schedule_once(
+                lambda dt: on_long_press(),
+                0.8
+            )
+
+        def on_long_press():
+            """Triggered when long press threshold is reached."""
+            note_btn._is_long_press = True
+            if note_btn._long_press_event:
+                note_btn._long_press_event.cancel()
+                note_btn._long_press_event = None
+            self.show_child_note_menu(note['id'], note['title'])
+
+        def on_button_release(instance):
+            """Handle button release - cancel long press and trigger normal press if needed."""
+            if note_btn._long_press_event:
+                note_btn._long_press_event.cancel()
+                note_btn._long_press_event = None
+
+            # Only open editor if it wasn't a long press
+            if not note_btn._is_long_press:
+                self.show_note_editor(note['id'])
+
+            note_btn._is_long_press = False
+
+        # Bind to button's on_press/on_release instead of touch events
+        note_btn.bind(on_press=on_button_down)
+        note_btn.bind(on_release=on_button_release)
 
         container.add_widget(note_btn)
         self.notes_list.add_widget(container)
@@ -158,6 +191,55 @@ class NotesScreen(BoxLayout):
             self.refresh_notes(value.strip())
         else:
             self.refresh_notes()
+
+    def show_child_note_menu(self, parent_id, parent_title):
+        """Show menu to create a child note."""
+        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
+
+        message = Label(
+            text=f'Create a child note under:\n"{parent_title}"',
+            size_hint_y=0.2
+        )
+        content.add_widget(message)
+
+        title_input = TextInput(
+            hint_text='Child note title',
+            multiline=False,
+            size_hint_y=0.15
+        )
+        content.add_widget(title_input)
+
+        content_input = TextInput(
+            hint_text='Note content',
+            size_hint_y=0.5
+        )
+        content.add_widget(content_input)
+
+        btn_layout = BoxLayout(size_hint_y=0.15, spacing=dp(10))
+
+        save_btn = Button(text='Create', background_color=(0.2, 0.6, 0.8, 1))
+        cancel_btn = Button(text='Cancel')
+
+        popup = Popup(
+            title='New Child Note',
+            content=content,
+            size_hint=(0.9, 0.8)
+        )
+
+        def save_child_note(btn):
+            if title_input.text.strip():
+                self.db.add_note(title_input.text.strip(), content_input.text, parent_id=parent_id)
+                self.refresh_notes()
+                popup.dismiss()
+
+        save_btn.bind(on_press=save_child_note)
+        cancel_btn.bind(on_press=popup.dismiss)
+
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+
+        popup.open()
 
     def show_add_note_dialog(self, instance):
         """Show dialog to add a new note."""

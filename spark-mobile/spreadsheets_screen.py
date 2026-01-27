@@ -25,16 +25,8 @@ class SpreadsheetsScreen(BoxLayout):
         # Top bar
         top_bar = BoxLayout(size_hint_y=0.1, padding=dp(10), spacing=dp(10))
 
-        title = Label(text='Spreadsheets', size_hint_x=0.7, font_size='20sp')
+        title = Label(text='Spreadsheets (View Only)', font_size='20sp')
         top_bar.add_widget(title)
-
-        add_btn = Button(
-            text='+ New Sheet',
-            size_hint_x=0.3,
-            background_color=(0.2, 0.6, 0.8, 1)
-        )
-        add_btn.bind(on_press=self.show_add_sheet_dialog)
-        top_bar.add_widget(add_btn)
 
         self.add_widget(top_bar)
 
@@ -180,11 +172,23 @@ class SpreadsheetsScreen(BoxLayout):
             expr_no_strings = re.sub(r'"[^"]*"|\'[^\']*\'', extract_strings, expr)
 
             # Validate the non-string parts
-            # Allow math function names (abs, floor, ceil, sqrt, pow, round) and math. prefix
-            allowed_chars = set('0123456789+-*/%.()<>=!& mathceilflorabsqrtpowdun_ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+            # Allow math function names (abs, floor, ceil, sqrt, pow, round, trunc) and math. prefix
+            allowed_chars = set('0123456789+-*/%.()<>=!&, mathceilflorabsqrtpowdun_ABCDEFGHIJKLMNOPQRSTUVWXYZ')
             if all(c in allowed_chars or c.isspace() for c in expr_no_strings.replace('==', '').replace('!=', '').replace('<=', '').replace('>=', '')):
                 # Expression structure is safe, now evaluate the original expression with strings
-                result = eval(expr)
+                # Provide math module and safe built-in functions to eval
+                safe_globals = {
+                    "__builtins__": {},
+                    "math": math,
+                    "abs": abs,
+                    "round": round,
+                    "pow": pow,
+                    "min": min,
+                    "max": max,
+                    "True": True,
+                    "False": False
+                }
+                result = eval(expr, safe_globals, {})
                 if isinstance(result, bool):
                     return str(result)
                 elif isinstance(result, (int, float)):
@@ -317,19 +321,24 @@ class SpreadsheetsScreen(BoxLayout):
         # FLOOR function
         expr = re.sub(r'FLOOR\(([^)]+)\)', lambda m: f'math.floor({m.group(1)})', expr, flags=re.IGNORECASE)
 
-        # CEILING/CEIL function
-        expr = re.sub(r'CEILING\(([^)]+)\)', lambda m: f'math.ceil({m.group(1)})', expr, flags=re.IGNORECASE)
-        expr = re.sub(r'CEIL\(([^)]+)\)', lambda m: f'math.ceil({m.group(1)})', expr, flags=re.IGNORECASE)
+        # CEILING/CEIL function - process CEILING first, then CEIL but not if already has math. prefix
+        expr = re.sub(r'\bCEILING\(([^)]+)\)', lambda m: f'math.ceil({m.group(1)})', expr, flags=re.IGNORECASE)
+        # Only match CEIL if not preceded by "math." (negative lookbehind)
+        expr = re.sub(r'(?<!math\.)\bCEIL\(([^)]+)\)', lambda m: f'math.ceil({m.group(1)})', expr, flags=re.IGNORECASE)
 
-        # ROUND function
+        # ROUND function - handle both single and two-argument forms
+        expr = re.sub(r'ROUND\(([^)]+),([^)]+)\)', r'round(\1,\2)', expr, flags=re.IGNORECASE)
         expr = re.sub(r'ROUND\(([^)]+)\)', r'round(\1)', expr, flags=re.IGNORECASE)
 
         # SQRT function
         expr = re.sub(r'SQRT\(([^)]+)\)', lambda m: f'math.sqrt({m.group(1)})', expr, flags=re.IGNORECASE)
 
-        # POWER/POW function
-        expr = re.sub(r'POWER\(([^)]+)\)', r'pow(\1)', expr, flags=re.IGNORECASE)
-        expr = re.sub(r'POW\(([^)]+)\)', r'pow(\1)', expr, flags=re.IGNORECASE)
+        # TRUNC function
+        expr = re.sub(r'TRUNC\(([^)]+)\)', lambda m: f'math.trunc({m.group(1)})', expr, flags=re.IGNORECASE)
+
+        # POWER/POW function - handle two arguments separated by comma
+        expr = re.sub(r'POWER\(([^,]+),([^)]+)\)', r'pow(\1,\2)', expr, flags=re.IGNORECASE)
+        expr = re.sub(r'POW\(([^,]+),([^)]+)\)', r'pow(\1,\2)', expr, flags=re.IGNORECASE)
 
         # MOD function (convert to % operator)
         expr = re.sub(r'MOD\(([^,]+),([^)]+)\)', r'(\1 % \2)', expr, flags=re.IGNORECASE)
