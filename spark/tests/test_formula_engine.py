@@ -284,3 +284,143 @@ class TestFormulaEngine:
         # but whitespace around operators works fine
         assert engine.evaluate("= A1 + B1 ") == 15.0
         assert engine.evaluate("=  SUM( A1 , A2 )  ") == 30
+
+    def test_min_function(self, sample_cells):
+        """Test MIN function."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=MIN(10,20,30)") == 10
+        assert engine.evaluate("=MIN(A1,A2,A3)") == 10
+        assert engine.evaluate("=min(5,3,8)") == 3  # Case insensitive
+
+    def test_min_function_with_range(self, sample_cells):
+        """Test MIN function with cell ranges."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=MIN(A1:A3)") == 10
+        assert engine.evaluate("=MIN(B1:B3)") == 5
+
+    def test_max_function(self, sample_cells):
+        """Test MAX function."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=MAX(10,20,30)") == 30
+        assert engine.evaluate("=MAX(A1,A2,A3)") == 30
+        assert engine.evaluate("=max(5,3,8)") == 8  # Case insensitive
+
+    def test_max_function_with_range(self, sample_cells):
+        """Test MAX function with cell ranges."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=MAX(A1:A3)") == 30
+        assert engine.evaluate("=MAX(B1:B3)") == 25
+
+    def test_count_function(self, sample_cells):
+        """Test COUNT function."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=COUNT(10,20,30)") == 3
+        assert engine.evaluate("=COUNT(A1,A2,A3)") == 3
+        assert engine.evaluate("=count(5,3,8,2)") == 4  # Case insensitive
+
+    def test_count_function_with_range(self, sample_cells):
+        """Test COUNT function with cell ranges."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=COUNT(A1:A3)") == 3
+        assert engine.evaluate("=COUNT(B1:B3)") == 3
+
+    def test_median_function(self, sample_cells):
+        """Test MEDIAN function."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=MEDIAN(10,20,30)") == 20
+        assert engine.evaluate("=MEDIAN(A1,A2,A3)") == 20
+        assert engine.evaluate("=median(1,2,3,4)") == 2.5  # Even count
+        assert engine.evaluate("=median(1,2,3)") == 2  # Odd count
+
+    def test_median_function_with_range(self, sample_cells):
+        """Test MEDIAN function with cell ranges."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=MEDIAN(A1:A3)") == 20
+        assert engine.evaluate("=MEDIAN(B1:B3)") == 15
+
+    def test_abs_function_in_formula(self, sample_cells):
+        """Test ABS function in formulas."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=ABS(-5)") == 5
+        assert engine.evaluate("=ABS(5)") == 5
+        assert engine.evaluate("=abs(-3.7)") == 3.7  # Case insensitive
+
+    def test_floor_function_in_formula(self, empty_cells):
+        """Test FLOOR function in formulas."""
+        engine = FormulaEngine(empty_cells)
+        assert engine.evaluate("=FLOOR(3.14159)") == 3
+        assert engine.evaluate("=FLOOR(3.9)") == 3
+        assert engine.evaluate("=floor(-2.5)") == -3  # Case insensitive
+
+    def test_ceiling_function_in_formula(self, empty_cells):
+        """Test CEILING/CEIL function in formulas."""
+        engine = FormulaEngine(empty_cells)
+        assert engine.evaluate("=CEILING(3.14159)") == 4
+        assert engine.evaluate("=CEIL(3.1)") == 4
+        assert engine.evaluate("=ceiling(3.9)") == 4  # Case insensitive
+
+    def test_round_function_in_formula(self, empty_cells):
+        """Test ROUND function in formulas."""
+        engine = FormulaEngine(empty_cells)
+        assert engine.evaluate("=ROUND(3.14159)") == 3
+        assert engine.evaluate("=ROUND(3.6)") == 4
+        assert engine.evaluate("=round(3.5)") == 4  # Case insensitive
+
+    def test_sqrt_function_in_formula(self, empty_cells):
+        """Test SQRT function in formulas."""
+        engine = FormulaEngine(empty_cells)
+        assert engine.evaluate("=SQRT(16)") == 4
+        assert engine.evaluate("=SQRT(25)") == 5
+        assert engine.evaluate("=sqrt(9)") == 3  # Case insensitive
+
+    def test_power_function_in_formula(self, empty_cells):
+        """Test POWER/POW function in formulas."""
+        engine = FormulaEngine(empty_cells)
+        assert engine.evaluate("=POWER(2,3)") == 8
+        assert engine.evaluate("=POW(5,2)") == 25
+        assert engine.evaluate("=power(10,0)") == 1  # Case insensitive
+
+    def test_mod_function_in_formula(self, sample_cells):
+        """Test MOD function in formulas."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=MOD(10,3)") == 1
+        assert engine.evaluate("=MOD(A2,3)") == 2  # A2=20, 20 % 3 = 2
+        assert engine.evaluate("=mod(17,5)") == 2  # Case insensitive
+
+    def test_pi_constant(self, empty_cells):
+        """Test PI constant in formulas."""
+        engine = FormulaEngine(empty_cells)
+        import math
+        result = engine.evaluate("=PI()")
+        assert result == pytest.approx(math.pi)
+        result = engine.evaluate("=PI")
+        assert result == pytest.approx(math.pi)
+        result = engine.evaluate("=2*PI()")
+        assert result == pytest.approx(2 * math.pi)
+
+    def test_e_constant(self, empty_cells):
+        """Test E constant in formulas."""
+        engine = FormulaEngine(empty_cells)
+        import math
+        result = engine.evaluate("=E()")
+        assert result == pytest.approx(math.e)
+        result = engine.evaluate("=E")
+        assert result == pytest.approx(math.e)
+
+    def test_combined_math_functions(self, sample_cells):
+        """Test combining multiple math functions."""
+        engine = FormulaEngine(sample_cells)
+        # ABS(A1 - A2) = ABS(10 - 20) = 10
+        assert engine.evaluate("=ABS(A1-A2)") == 10
+        # SQRT(MAX(A1:A3)) = SQRT(30) = 5.477...
+        result = engine.evaluate("=SQRT(MAX(A1:A3))")
+        assert result == pytest.approx(5.477, rel=0.01)
+        # ROUND(AVERAGE(A1:A3)) = ROUND(20) = 20
+        assert engine.evaluate("=ROUND(AVERAGE(A1:A3))") == 20
+
+    def test_math_functions_with_cell_references(self, sample_cells):
+        """Test math functions with cell references."""
+        engine = FormulaEngine(sample_cells)
+        assert engine.evaluate("=FLOOR(A2/3)") == 6  # FLOOR(20/3) = 6
+        assert engine.evaluate("=CEIL(A1/3)") == 4  # CEIL(10/3) = 4
+        assert engine.evaluate("=ABS(B1-A1)") == 5  # ABS(5-10) = 5

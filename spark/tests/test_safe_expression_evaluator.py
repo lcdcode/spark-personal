@@ -147,3 +147,97 @@ class TestSafeExpressionEvaluator:
         assert SafeExpressionEvaluator.evaluate("5 * 0") == 0
         assert SafeExpressionEvaluator.evaluate("0 ** 5") == 0
         assert SafeExpressionEvaluator.evaluate("5 - 0") == 5
+
+    def test_abs_function(self):
+        """Test abs() function."""
+        assert SafeExpressionEvaluator.evaluate("abs(-5)") == 5
+        assert SafeExpressionEvaluator.evaluate("abs(5)") == 5
+        assert SafeExpressionEvaluator.evaluate("abs(-5.7)") == 5.7
+        assert SafeExpressionEvaluator.evaluate("abs(0)") == 0
+
+    def test_floor_function(self):
+        """Test floor() function."""
+        assert SafeExpressionEvaluator.evaluate("floor(3.14159)") == 3
+        assert SafeExpressionEvaluator.evaluate("floor(3.9)") == 3
+        assert SafeExpressionEvaluator.evaluate("floor(-2.5)") == -3
+        assert SafeExpressionEvaluator.evaluate("floor(5)") == 5
+
+    def test_ceil_function(self):
+        """Test ceil() function."""
+        assert SafeExpressionEvaluator.evaluate("ceil(3.14159)") == 4
+        assert SafeExpressionEvaluator.evaluate("ceil(3.1)") == 4
+        assert SafeExpressionEvaluator.evaluate("ceil(-2.5)") == -2
+        assert SafeExpressionEvaluator.evaluate("ceil(5)") == 5
+
+    def test_round_function(self):
+        """Test round() function."""
+        assert SafeExpressionEvaluator.evaluate("round(3.14159)") == 3
+        assert SafeExpressionEvaluator.evaluate("round(3.6)") == 4
+        assert SafeExpressionEvaluator.evaluate("round(3.14159, 2)") == pytest.approx(3.14)
+        assert SafeExpressionEvaluator.evaluate("round(3.5)") == 4
+
+    def test_sqrt_function(self):
+        """Test sqrt() function."""
+        assert SafeExpressionEvaluator.evaluate("sqrt(16)") == 4
+        assert SafeExpressionEvaluator.evaluate("sqrt(25)") == 5
+        assert SafeExpressionEvaluator.evaluate("sqrt(2)") == pytest.approx(1.41421, rel=1e-5)
+        assert SafeExpressionEvaluator.evaluate("sqrt(0)") == 0
+
+    def test_pow_function(self):
+        """Test pow() function."""
+        assert SafeExpressionEvaluator.evaluate("pow(2, 3)") == 8
+        assert SafeExpressionEvaluator.evaluate("pow(5, 2)") == 25
+        assert SafeExpressionEvaluator.evaluate("pow(10, 0)") == 1
+        assert SafeExpressionEvaluator.evaluate("pow(2, -1)") == 0.5
+
+    def test_min_max_functions(self):
+        """Test min() and max() functions."""
+        assert SafeExpressionEvaluator.evaluate("min(5, 10)") == 5
+        assert SafeExpressionEvaluator.evaluate("min(10, 5)") == 5
+        assert SafeExpressionEvaluator.evaluate("min(3, 1, 4, 1, 5, 9)") == 1
+        assert SafeExpressionEvaluator.evaluate("max(5, 10)") == 10
+        assert SafeExpressionEvaluator.evaluate("max(10, 5)") == 10
+        assert SafeExpressionEvaluator.evaluate("max(3, 1, 4, 1, 5, 9)") == 9
+
+    def test_trigonometric_functions(self):
+        """Test trigonometric functions."""
+        assert SafeExpressionEvaluator.evaluate("sin(0)") == 0
+        assert SafeExpressionEvaluator.evaluate("cos(0)") == 1
+        assert SafeExpressionEvaluator.evaluate("tan(0)") == 0
+        # Test with pi
+        import math
+        assert SafeExpressionEvaluator.evaluate("sin(pi / 2)") == pytest.approx(1, rel=1e-10)
+        assert SafeExpressionEvaluator.evaluate("cos(pi)") == pytest.approx(-1, rel=1e-10)
+
+    def test_logarithmic_functions(self):
+        """Test logarithmic functions."""
+        import math
+        assert SafeExpressionEvaluator.evaluate("log(e)") == pytest.approx(1, rel=1e-10)
+        assert SafeExpressionEvaluator.evaluate("log10(100)") == 2
+        assert SafeExpressionEvaluator.evaluate("log10(1000)") == 3
+        assert SafeExpressionEvaluator.evaluate("exp(0)") == 1
+        assert SafeExpressionEvaluator.evaluate("exp(1)") == pytest.approx(math.e, rel=1e-10)
+
+    def test_math_constants(self):
+        """Test math constants (pi, e, tau)."""
+        import math
+        assert SafeExpressionEvaluator.evaluate("pi") == pytest.approx(math.pi)
+        assert SafeExpressionEvaluator.evaluate("e") == pytest.approx(math.e)
+        assert SafeExpressionEvaluator.evaluate("tau") == pytest.approx(math.tau)
+        # Test using constants in expressions
+        assert SafeExpressionEvaluator.evaluate("2 * pi") == pytest.approx(2 * math.pi)
+        assert SafeExpressionEvaluator.evaluate("pi / 2") == pytest.approx(math.pi / 2)
+
+    def test_nested_math_functions(self):
+        """Test nested math functions."""
+        assert SafeExpressionEvaluator.evaluate("abs(floor(-3.7))") == 4
+        assert SafeExpressionEvaluator.evaluate("sqrt(abs(-16))") == 4
+        assert SafeExpressionEvaluator.evaluate("round(sqrt(50))") == 7
+        assert SafeExpressionEvaluator.evaluate("max(abs(-5), sqrt(9))") == 5
+
+    def test_math_functions_with_expressions(self):
+        """Test math functions with complex expressions as arguments."""
+        assert SafeExpressionEvaluator.evaluate("abs(5 - 10)") == 5
+        assert SafeExpressionEvaluator.evaluate("sqrt(16 + 9)") == 5
+        assert SafeExpressionEvaluator.evaluate("floor(pi * 2)") == 6
+        assert SafeExpressionEvaluator.evaluate("max(2 + 3, 4 * 2)") == 8

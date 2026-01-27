@@ -147,6 +147,55 @@ class Database:
             logger.error(f"Failed to update note {note_id}: {e}", exc_info=True)
             raise
 
+    def update_note_parent(self, note_id: int, new_parent_id: Optional[int]):
+        """Update a note's parent_id."""
+        logger.info(f"Updating note id={note_id} parent to {new_parent_id}")
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            # Prevent circular references
+            if new_parent_id is not None:
+                if note_id == new_parent_id:
+                    raise ValueError("Cannot make a note its own parent")
+
+                # Check if new_parent_id is a descendant of note_id
+                if self._is_descendant(note_id, new_parent_id):
+                    raise ValueError("Cannot make a note a child of its own descendant")
+
+            cursor.execute(
+                'UPDATE notes SET parent_id = ?, modified_at = ? WHERE id = ?',
+                (new_parent_id, datetime.now(), note_id)
+            )
+            self._before_commit()
+            conn.commit()
+            logger.info(f"Note {note_id} parent updated successfully")
+        except Exception as e:
+            logger.error(f"Failed to update note {note_id} parent: {e}", exc_info=True)
+            raise
+
+    def _is_descendant(self, ancestor_id: int, potential_descendant_id: int) -> bool:
+        """Check if potential_descendant_id is a descendant of ancestor_id."""
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        # Get all descendants of ancestor_id recursively
+        descendants = set()
+        to_check = [ancestor_id]
+
+        while to_check:
+            current_id = to_check.pop()
+            cursor.execute('SELECT id FROM notes WHERE parent_id = ?', (current_id,))
+            children = cursor.fetchall()
+            for child in children:
+                child_id = child['id']
+                if child_id == potential_descendant_id:
+                    return True
+                descendants.add(child_id)
+                to_check.append(child_id)
+
+        return False
+
     def delete_note(self, note_id: int):
         """Delete a note and its children."""
         logger.info(f"Deleting note id={note_id}")

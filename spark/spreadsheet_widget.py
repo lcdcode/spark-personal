@@ -4,6 +4,7 @@ import json
 import re
 import ast
 import operator
+import math
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
@@ -45,6 +46,37 @@ class SafeExpressionEvaluator:
     BOOL_OPS = {
         ast.And: lambda x, y: x and y,
         ast.Or: lambda x, y: x or y,
+    }
+
+    # Allowed math functions (for direct evaluation in expressions)
+    MATH_FUNCTIONS = {
+        'abs': abs,
+        'round': round,
+        'floor': math.floor,
+        'ceil': math.ceil,
+        'trunc': math.trunc,
+        'sqrt': math.sqrt,
+        'pow': pow,
+        'exp': math.exp,
+        'log': math.log,
+        'log10': math.log10,
+        'sin': math.sin,
+        'cos': math.cos,
+        'tan': math.tan,
+        'asin': math.asin,
+        'acos': math.acos,
+        'atan': math.atan,
+        'degrees': math.degrees,
+        'radians': math.radians,
+        'min': min,
+        'max': max,
+    }
+
+    # Math constants
+    MATH_CONSTANTS = {
+        'pi': math.pi,
+        'e': math.e,
+        'tau': math.tau,
     }
 
     @staticmethod
@@ -98,6 +130,24 @@ class SafeExpressionEvaluator:
             return result
         elif isinstance(node, ast.NameConstant):  # True, False, None (Python 3.7)
             return node.value
+        elif isinstance(node, ast.Call):
+            # Handle function calls
+            if isinstance(node.func, ast.Name):
+                func_name = node.func.id
+                if func_name in SafeExpressionEvaluator.MATH_FUNCTIONS:
+                    func = SafeExpressionEvaluator.MATH_FUNCTIONS[func_name]
+                    args = [SafeExpressionEvaluator._eval_node(arg) for arg in node.args]
+                    return func(*args)
+                else:
+                    raise ValueError(f"Unknown or unsafe function: {func_name}")
+            else:
+                raise ValueError(f"Unsupported function call type: {type(node.func).__name__}")
+        elif isinstance(node, ast.Name):
+            # Handle named constants
+            if node.id in SafeExpressionEvaluator.MATH_CONSTANTS:
+                return SafeExpressionEvaluator.MATH_CONSTANTS[node.id]
+            else:
+                raise ValueError(f"Unknown constant or variable: {node.id}")
         else:
             raise ValueError(f"Unsupported expression type: {type(node).__name__}")
 
@@ -188,7 +238,15 @@ class FormulaEngine:
         """Handle spreadsheet functions."""
         # Process in multiple passes to handle nested functions properly
 
-        # First pass: Replace TODAY() and NOW() with numeric values
+        # First pass: Replace constants and zero-argument functions
+        # PI constant
+        formula = re.sub(r'\bPI\(\)', str(math.pi), formula, flags=re.IGNORECASE)
+        formula = re.sub(r'\bPI\b', str(math.pi), formula, flags=re.IGNORECASE)
+
+        # E constant
+        formula = re.sub(r'\bE\(\)', str(math.e), formula, flags=re.IGNORECASE)
+        formula = re.sub(r'\bE\b', str(math.e), formula, flags=re.IGNORECASE)
+
         # TODAY function - returns numeric timestamp (days since epoch)
         today_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() / 86400
         formula = re.sub(r'TODAY\(\)', str(today_timestamp), formula, flags=re.IGNORECASE)
@@ -231,6 +289,106 @@ class FormulaEngine:
             flags=re.IGNORECASE
         )
 
+        # MIN function
+        formula = re.sub(
+            r'MIN\((.*?)\)',
+            lambda m: str(self.func_min(m.group(1))),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # MAX function
+        formula = re.sub(
+            r'MAX\((.*?)\)',
+            lambda m: str(self.func_max(m.group(1))),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # COUNT function
+        formula = re.sub(
+            r'COUNT\((.*?)\)',
+            lambda m: str(self.func_count(m.group(1))),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # MEDIAN function
+        formula = re.sub(
+            r'MEDIAN\((.*?)\)',
+            lambda m: str(self.func_median(m.group(1))),
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # MOD function (modulo operation)
+        formula = re.sub(
+            r'MOD\((.*?),(.*?)\)',
+            lambda m: f'({m.group(1)} % {m.group(2)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # FLOOR function (spreadsheet-style, converts to lowercase for Python)
+        formula = re.sub(
+            r'FLOOR\((.*?)\)',
+            lambda m: f'floor({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # CEILING/CEIL function (spreadsheet-style, converts to lowercase for Python)
+        formula = re.sub(
+            r'CEILING\((.*?)\)',
+            lambda m: f'ceil({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+        formula = re.sub(
+            r'CEIL\((.*?)\)',
+            lambda m: f'ceil({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # ABS function (spreadsheet-style, converts to lowercase for Python)
+        formula = re.sub(
+            r'ABS\((.*?)\)',
+            lambda m: f'abs({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # ROUND function (spreadsheet-style, converts to lowercase for Python)
+        formula = re.sub(
+            r'ROUND\((.*?)\)',
+            lambda m: f'round({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # SQRT function (spreadsheet-style, converts to lowercase for Python)
+        formula = re.sub(
+            r'SQRT\((.*?)\)',
+            lambda m: f'sqrt({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+
+        # POWER/POW function (spreadsheet-style, converts to lowercase for Python)
+        formula = re.sub(
+            r'POWER\((.*?)\)',
+            lambda m: f'pow({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+        formula = re.sub(
+            r'POW\((.*?)\)',
+            lambda m: f'pow({m.group(1)})',
+            formula,
+            flags=re.IGNORECASE
+        )
+
         # Boolean functions
         formula = formula.replace('AND(True,True)', 'True')
         formula = formula.replace('OR(False,False)', 'False')
@@ -248,6 +406,35 @@ class FormulaEngine:
         """AVERAGE function implementation."""
         values = self._parse_function_args(args)
         return sum(values) / len(values) if values else 0
+
+    def func_min(self, args: str) -> float:
+        """MIN function implementation."""
+        values = self._parse_function_args(args)
+        return min(values) if values else 0
+
+    def func_max(self, args: str) -> float:
+        """MAX function implementation."""
+        values = self._parse_function_args(args)
+        return max(values) if values else 0
+
+    def func_count(self, args: str) -> int:
+        """COUNT function implementation."""
+        values = self._parse_function_args(args)
+        return len(values)
+
+    def func_median(self, args: str) -> float:
+        """MEDIAN function implementation."""
+        values = self._parse_function_args(args)
+        if not values:
+            return 0
+        sorted_values = sorted(values)
+        n = len(sorted_values)
+        if n % 2 == 0:
+            # Even number of values - average the two middle ones
+            return (sorted_values[n // 2 - 1] + sorted_values[n // 2]) / 2
+        else:
+            # Odd number of values - return the middle one
+            return sorted_values[n // 2]
 
     def _parse_function_args(self, args: str) -> list:
         """Parse function arguments including cell references and ranges."""

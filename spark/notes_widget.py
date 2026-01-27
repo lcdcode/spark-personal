@@ -15,8 +15,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QTextEdit, QTabWidget, QSplitter, QLineEdit,
     QMessageBox, QInputDialog, QFileDialog, QMenu, QTextBrowser
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl, QMimeData
-from PyQt6.QtGui import QTextCursor, QImage, QAction, QDesktopServices
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl, QMimeData, QModelIndex
+from PyQt6.QtGui import QTextCursor, QImage, QAction, QDesktopServices, QDropEvent
 import markdown
 from markdown.extensions import Extension
 from markdown.preprocessors import Preprocessor
@@ -140,6 +140,53 @@ class CodeHighlightExtension(Extension):
         md.preprocessors.register(CodeBlockPreprocessor(md), 'codehighlight', 90)
 
 
+class NotesTreeWidget(QTreeWidget):
+    """Custom QTreeWidget with drag-and-drop support for reparenting notes."""
+
+    note_reparented = pyqtSignal(int, object)  # note_id, new_parent_id (or None)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def dropEvent(self, event: QDropEvent):
+        """Handle drop event to reparent notes."""
+        dragged_item = self.currentItem()
+        if not dragged_item:
+            event.ignore()
+            return
+
+        # Get the item being dropped onto
+        drop_indicator = self.dropIndicatorPosition()
+        target_item = self.itemAt(event.position().toPoint())
+
+        dragged_note_id = dragged_item.data(0, Qt.ItemDataRole.UserRole)
+
+        # Determine new parent based on drop position
+        new_parent_id = None
+
+        if drop_indicator == QTreeWidget.DropIndicatorPosition.OnItem:
+            # Dropped directly on an item - make it a child
+            if target_item:
+                new_parent_id = target_item.data(0, Qt.ItemDataRole.UserRole)
+        elif drop_indicator in (QTreeWidget.DropIndicatorPosition.AboveItem,
+                                 QTreeWidget.DropIndicatorPosition.BelowItem):
+            # Dropped above/below an item - make it a sibling (same parent as target)
+            if target_item:
+                parent_item = target_item.parent()
+                if parent_item:
+                    new_parent_id = parent_item.data(0, Qt.ItemDataRole.UserRole)
+                # else: new_parent_id remains None (root level)
+        else:
+            # Dropped on viewport - make it a root note
+            new_parent_id = None
+
+        # Emit signal to update database
+        self.note_reparented.emit(dragged_note_id, new_parent_id)
+
+        # Accept the event (visual update will happen when tree is reloaded)
+        event.accept()
+
+
 class ImageTextEdit(QTextEdit):
     """Custom QTextEdit with drag-and-drop and paste support for images."""
 
@@ -213,12 +260,22 @@ class NotesWidget(QWidget):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
 
-        # Tree widget
-        self.tree = QTreeWidget()
+        # Tree widget (use custom class for drag-and-drop support)
+        self.tree = NotesTreeWidget()
         self.tree.setHeaderLabel("Notes")
         self.tree.itemClicked.connect(self.on_note_selected)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
+
+        # Enable drag and drop
+        self.tree.setDragEnabled(True)
+        self.tree.setAcceptDrops(True)
+        self.tree.setDropIndicatorShown(True)
+        self.tree.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
+
+        # Connect reparenting signal
+        self.tree.note_reparented.connect(self.on_note_reparented)
+
         left_layout.addWidget(self.tree)
 
         # Buttons
@@ -567,6 +624,36 @@ class NotesWidget(QWidget):
             self.load_notes()
             self.clear_editor()
             self.note_modified.emit()
+
+    def on_note_reparented(self, note_id: int, new_parent_id):
+        """Handle note reparenting from drag-and-drop."""
+        logger.info(f"Reparenting note id={note_id} to parent_id={new_parent_id}")
+        try:
+            # Update the database
+            self.database.update_note_parent(note_id, new_parent_id)
+
+            # Reload the tree to reflect changes
+            self.load_notes()
+
+            # Emit modification signal
+            self.note_modified.emit()
+
+            logger.info("Note reparented successfully")
+        except ValueError as e:
+            # Handle circular reference errors
+            logger.warning(f"Invalid reparenting operation: {e}")
+            QMessageBox.warning(
+                self,
+                "Invalid Operation",
+                str(e)
+            )
+        except Exception as e:
+            logger.error(f"Failed to reparent note: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to reparent note:\n{e}"
+            )
 
     def save_current_note(self):
         """Save the current note."""
