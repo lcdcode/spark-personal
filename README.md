@@ -220,7 +220,7 @@ To Update SPARK to the latest version, simply pull the latest from Git.
 Switch to the spark directory and run:
 
 ```bash
-git pull origin master
+git pull origin main
 ```
 
 ## Features in Detail
