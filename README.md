@@ -91,6 +91,14 @@ sudo dnf install -y xcb-util-cursor xcb-util-image xcb-util-keysyms libxkbcommon
 
 The easiest way to run SPARK Personal is using the provided launcher scripts, which automatically set up a virtual environment:
 
+First, Clone the repository:
+```bash
+git clone https://github.com/lcdcode/spark-personal.git
+cd spark-personal
+```
+
+Then:
+
 **Linux/macOS:**
 ```bash
 ./run.sh
@@ -114,7 +122,7 @@ If you prefer to install manually or need more control:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/spark-personal.git
+git clone https://github.com/lcdcode/spark-personal.git
 cd spark-personal
 ```
 
