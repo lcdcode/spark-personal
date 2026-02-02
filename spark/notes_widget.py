@@ -195,6 +195,7 @@ class ImageTextEdit(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
+        self.indent_string = "    "  # 4 spaces for indentation
 
     def canInsertFromMimeData(self, source: QMimeData) -> bool:
         """Check if the mime data contains an image or file."""
@@ -228,6 +229,153 @@ class ImageTextEdit(QTextEdit):
         """Check if a file is an image based on extension."""
         image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg', '.webp'}
         return Path(file_path).suffix.lower() in image_extensions
+
+    def keyPressEvent(self, event):
+        """Handle Tab and Shift+Tab for block indentation."""
+        if event.key() == Qt.Key.Key_Tab:
+            # Tab pressed - indent selected lines
+            self._indent_selection()
+            event.accept()
+        elif event.key() == Qt.Key.Key_Backtab:
+            # Shift+Tab pressed - de-indent selected lines
+            self._deindent_selection()
+            event.accept()
+        else:
+            # Let the base class handle other keys
+            super().keyPressEvent(event)
+
+    def _indent_selection(self):
+        """Indent all selected lines or current line."""
+        cursor = self.textCursor()
+
+        # If there's a selection, indent all selected lines
+        if cursor.hasSelection():
+            # Get the selection start and end positions
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+
+            # Move cursor to start of selection
+            cursor.setPosition(start)
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+
+            # Move to end and find the last block
+            end_cursor = QTextCursor(cursor)
+            end_cursor.setPosition(end)
+            end_block = end_cursor.block().blockNumber()
+            start_block = cursor.block().blockNumber()
+
+            # Begin edit block for undo/redo
+            cursor.beginEditBlock()
+
+            # Indent each line in the selection
+            for i in range(start_block, end_block + 1):
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+                cursor.insertText(self.indent_string)
+                cursor.movePosition(QTextCursor.MoveOperation.NextBlock)
+
+            cursor.endEditBlock()
+        else:
+            # No selection - just indent current line
+            cursor.beginEditBlock()
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            cursor.insertText(self.indent_string)
+            cursor.endEditBlock()
+
+    def _deindent_selection(self):
+        """De-indent all selected lines or current line."""
+        cursor = self.textCursor()
+
+        # If there's a selection, de-indent all selected lines
+        if cursor.hasSelection():
+            # Get the selection start and end positions
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+
+            # Move cursor to start of selection
+            cursor.setPosition(start)
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+
+            # Move to end and find the last block
+            end_cursor = QTextCursor(cursor)
+            end_cursor.setPosition(end)
+            end_block = end_cursor.block().blockNumber()
+            start_block = cursor.block().blockNumber()
+
+            # Begin edit block for undo/redo
+            cursor.beginEditBlock()
+
+            # De-indent each line in the selection
+            for i in range(start_block, end_block + 1):
+                cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+
+                # Get the text of the current line
+                line_start = cursor.position()
+                cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+                line_text = cursor.selectedText()
+
+                # Reset position to start of line
+                cursor.setPosition(line_start)
+
+                # Check if line starts with indent_string
+                if line_text.startswith(self.indent_string):
+                    # Remove one indent level
+                    cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, len(self.indent_string))
+                    cursor.removeSelectedText()
+                elif line_text.startswith(' ') or line_text.startswith('\t'):
+                    # Remove leading whitespace up to indent width
+                    spaces_to_remove = 0
+                    for char in line_text:
+                        if char == ' ' and spaces_to_remove < len(self.indent_string):
+                            spaces_to_remove += 1
+                        elif char == '\t':
+                            spaces_to_remove = len(self.indent_string)
+                            break
+                        else:
+                            break
+
+                    if spaces_to_remove > 0:
+                        cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, spaces_to_remove)
+                        cursor.removeSelectedText()
+
+                # Move to next line
+                cursor.movePosition(QTextCursor.MoveOperation.NextBlock)
+
+            cursor.endEditBlock()
+        else:
+            # No selection - just de-indent current line
+            cursor.beginEditBlock()
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+
+            # Get the text of the current line
+            line_start = cursor.position()
+            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+            line_text = cursor.selectedText()
+
+            # Reset position to start of line
+            cursor.setPosition(line_start)
+
+            # Check if line starts with indent_string
+            if line_text.startswith(self.indent_string):
+                # Remove one indent level
+                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, len(self.indent_string))
+                cursor.removeSelectedText()
+            elif line_text.startswith(' ') or line_text.startswith('\t'):
+                # Remove leading whitespace up to indent width
+                spaces_to_remove = 0
+                for char in line_text:
+                    if char == ' ' and spaces_to_remove < len(self.indent_string):
+                        spaces_to_remove += 1
+                    elif char == '\t':
+                        spaces_to_remove = len(self.indent_string)
+                        break
+                    else:
+                        break
+
+                if spaces_to_remove > 0:
+                    cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, spaces_to_remove)
+                    cursor.removeSelectedText()
+
+            cursor.endEditBlock()
 
 
 class NotesWidget(QWidget):
@@ -845,7 +993,7 @@ class NotesWidget(QWidget):
             code_inline_fg = "#d4d4d4"
             blockquote_bg = "#2a2a2a"
             blockquote_fg = "#b0b0b0"
-            blockquote_border = "#4a4a4a"
+            blockquote_border = "#888888"  # Much lighter gray for visibility
             table_header_bg = "#2d2d2d"
             table_row_bg = "#252525"
             border_color = "#3e3e3e"
@@ -858,7 +1006,7 @@ class NotesWidget(QWidget):
             code_inline_fg = "#000000"
             blockquote_bg = "#f8f9fa"
             blockquote_fg = "#555"
-            blockquote_border = "#0066cc"
+            blockquote_border = "#0066cc"  # Bright blue for visibility
             table_header_bg = "#f4f4f4"
             table_row_bg = "#fafafa"
             border_color = "#ddd"
@@ -919,10 +1067,21 @@ class NotesWidget(QWidget):
             }}
             blockquote {{
                 border-left: 4px solid {blockquote_border};
-                margin: 1em 0;
-                padding: 0.5em 1em;
-                background-color: {blockquote_bg};
+                margin: 1em 0 1em 0.5em;
+                padding: 0.5em 0.5em 0.5em 16px;
+                background-color: transparent;
                 color: {blockquote_fg};
+                font-style: italic;
+            }}
+            blockquote p {{
+                margin: 0.5em 0;
+                padding-left: 0;
+            }}
+            blockquote p:first-child {{
+                margin-top: 0;
+            }}
+            blockquote p:last-child {{
+                margin-bottom: 0;
             }}
             blockquote blockquote {{
                 border-left-color: {border_color};
@@ -993,6 +1152,45 @@ class NotesWidget(QWidget):
         </style>
         '''
 
+    def _wrap_blockquotes_in_table(self, html_content: str) -> str:
+        """Wrap blockquotes in a table structure for reliable border rendering in QTextBrowser.
+
+        QTextBrowser has issues rendering CSS borders, so we use a table with a colored
+        cell to create the visual left border effect.
+        """
+        # Get current theme for border color
+        theme_name = self.config.get('theme', 'Light')
+        is_dark_theme = 'dark' in theme_name.lower() or theme_name.lower() in ['gruvbox', 'monokai']
+        border_color = "#888888" if is_dark_theme else "#0066cc"
+        text_color = "#b0b0b0" if is_dark_theme else "#555555"
+
+        def replace_blockquote(match):
+            blockquote_content = match.group(1)
+
+            # Create a table with a colored border cell and content cell
+            table_html = f'''
+            <table cellpadding="0" cellspacing="0" border="0" style="margin: 1em 0; width: 100%;">
+                <tr>
+                    <td style="width: 4px; background-color: {border_color}; padding: 0;"></td>
+                    <td style="padding: 0.5em 0.5em 0.5em 12px; color: {text_color}; font-style: italic;">
+                        {blockquote_content}
+                    </td>
+                </tr>
+            </table>
+            '''
+            return table_html
+
+        # Match blockquote tags and their content (non-greedy)
+        # This handles simple blockquotes but not nested ones perfectly
+        html_content = re.sub(
+            r'<blockquote>\s*(.*?)\s*</blockquote>',
+            replace_blockquote,
+            html_content,
+            flags=re.DOTALL
+        )
+
+        return html_content
+
     def update_preview(self):
         """Update the preview pane with rendered Markdown."""
         content = self.editor.toPlainText()
@@ -1020,6 +1218,9 @@ class NotesWidget(QWidget):
 
         # Get theme-aware CSS
         css = self._get_theme_aware_css()
+
+        # Post-process blockquotes to use table structure for reliable border rendering
+        html_content = self._wrap_blockquotes_in_table(html_content)
 
         full_html = f'''
         <!DOCTYPE html>
