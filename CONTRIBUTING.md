@@ -260,7 +260,7 @@ Looking for contribution ideas? Here are some potential enhancements:
 
 ### Low Priority
 - [ ] Cloud sync support
-- [ ] Mobile companion app
+- [x] Mobile companion app (separate repo: https://github.com/lcdcode/spark-mobile)
 - [ ] Encrypted notes
 - [ ] Collaborative features
 - [ ] Integration with external editors

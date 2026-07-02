@@ -322,7 +322,9 @@ If the file exists but appears empty, restore from backup (File → Backup Manag
 
 ### Q: Is there a mobile version?
 
-**A:** Not currently. Mobile support is on the roadmap.
+**A:** Yes. SPARK Mobile is a separate Kotlin/Android app that reads and writes
+the same SQLite database (sync it with Syncthing). It lives in its own repository:
+https://github.com/lcdcode/spark-mobile. It is distributed by sideloading.
 
 ### Q: Can I rename the application?
 

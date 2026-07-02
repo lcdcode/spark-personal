@@ -14,7 +14,7 @@ Both SPARK desktop and mobile apps now support **automatic database change detec
 - Refreshes all widgets (Notes, Spreadsheets, Snippets) with new data
 
 ### Mobile App
-- Checks database file modification time every 5 seconds
+- Watches the database directory with a `FileObserver` (event-driven)
 - Detects when Syncthing syncs changes from desktop
 - Shows a popup: "Database changed externally. Reload?"
 - Saves pending changes before reloading
@@ -68,7 +68,7 @@ For best experience:
 1. Edit data on desktop app
 2. Desktop auto-saves changes (configurable interval, default 5 minutes)
 3. Syncthing detects database change and syncs to mobile
-4. Mobile app detects file change (checked every 5 seconds)
+4. Mobile app detects the file change (event-driven)
 5. Shows popup to reload
 6. Tap "Reload" to see desktop changes
 
@@ -151,11 +151,11 @@ If both devices are editing simultaneously:
 - **Reload:** `reload_database()` method
 
 ### Mobile Implementation
-- **File:** [spark-mobile/main.py](spark-mobile/main.py:91-93)
-- **Monitor:** `os.path.getmtime()` every 5 seconds
-- **Trigger:** Kivy Clock scheduled interval
-- **Handler:** `check_database_changes()` method
-- **Reload:** `reload_database()` method
+SPARK Mobile is a separate Kotlin/Android app (https://github.com/lcdcode/spark-mobile).
+- **Monitor:** `FileObserver` on the database's parent directory (event-driven)
+- **Trigger:** file replaced by Syncthing (atomic rename)
+- **Handler:** prompts to reload; self-initiated writes are suppressed
+- **Reload:** reopens the database and refreshes the UI
 
 ## Versions
 
@@ -165,7 +165,7 @@ If both devices are editing simultaneously:
 ## Performance Impact
 
 - **Desktop:** Negligible (OS-level file watching)
-- **Mobile:** Minimal (one file stat every 5 seconds)
+- **Mobile:** Minimal (event-driven file watching)
 - **Battery:** No significant impact on mobile battery life
 - **Network:** Depends on Syncthing configuration and database size
 

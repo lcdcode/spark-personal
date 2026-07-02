@@ -282,7 +282,6 @@ On first run, SPARK Personal will:
 - Collaborative features
 - Encrypted notes
 - REST API
-- Mobile companion app
 
 ## Performance Considerations
 
